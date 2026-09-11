@@ -1,0 +1,22 @@
+# clasp — the OAuth token, never commit it
+.clasprc.json
+
+# clasp — pins one specific Apps Script project, so it is per-checkout
+.clasp.json
+
+# macOS
+.DS_Store
+._*
+
+# editors
+.idea/
+.vscode/
+*.swp
+
+# Claude Code — local agent state, at any depth
+.claude/
+
+# local scratch: logs, exports, screenshots, downloaded PDFs.
+# The folder itself is tracked through its .gitkeep; nothing written into it is.
+tmp/*
+!tmp/.gitkeep
