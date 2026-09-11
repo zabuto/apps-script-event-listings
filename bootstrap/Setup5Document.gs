@@ -24,6 +24,8 @@ function setupDocument() {
   const folder = parentFolder_(ss);
   report_('=== the document, the logo and the archive folder ===');
   report_(`Folder: ${folder.getName()} (${folder.getId()})`);
+  report_(`        ${folderUrl_(folder)}`);
+  report_('        that is the folder the spreadsheet itself is in, and where the three files below go.');
   report_(`Spreadsheet: ${ss.getName()} (${ss.getId()})`);
 
   const doc = ensureDoc_(folder);
@@ -85,14 +87,15 @@ function ensureDoc_(folder) {
     file = existing[0];
     report_(`  reused "${name}" — the id is unchanged, which is the point`);
     if (existing.length > 1) {
-      report_(`  ⚠ more than one file called "${name}" in this folder. Only the id below is the one`);
-      report_('    the script writes to; the others are strays — delete them.');
+      report_(`  ⚠ more than one file called "${name}" in "${folder.getName()}". Only the id below is`);
+      report_('    the one the script writes to; the others are strays — delete them:');
+      report_(`    ${folderUrl_(folder)}`);
     }
   } else {
     const created = DocumentApp.create(name);        // lands in My Drive root
     file = DriveApp.getFileById(created.getId());
     file.moveTo(folder);
-    report_(`  created "${name}" and moved it into the folder`);
+    report_(`  created "${name}" and moved it into "${folder.getName()}"`);
   }
 
   const doc = DocumentApp.openById(file.getId());
@@ -135,10 +138,12 @@ function findLogo_(folder) {
   report_('--- the logo (optional) ---');
   const existing = live_(folder.getFilesByName(name));
   if (!existing.length) {
-    report_(`  no file called "${name}" in this folder.`);
+    report_(`  no file called "${name}" in "${folder.getName()}" (${folder.getId()}), the folder the`);
+    report_('  spreadsheet lives in:');
+    report_(`    ${folderUrl_(folder)}`);
     report_('  The document builds without one — the logo is skipped and the listing is unaffected.');
-    report_(`  To add one: upload an image named "${name}" into the folder, run this again, and put`);
-    report_(`  the id it prints into the ${CONFIG.properties.logoFileId} property.`);
+    report_(`  To add one: upload an image named exactly "${name}" into that folder, run this again,`);
+    report_(`  and put the id it prints into the ${CONFIG.properties.logoFileId} property.`);
     return null;
   }
 
@@ -166,6 +171,11 @@ function ensurePdfFolder_(folder) {
   const created = folder.createFolder(name);
   report_(`  created "${name}"`);
   return created;
+}
+
+/** The folder's Drive URL, so a report points at the folder it means instead of naming it alone. */
+function folderUrl_(folder) {
+  return `https://drive.google.com/drive/folders/${folder.getId()}`;
 }
 
 /** MD5 as lowercase hex. `computeDigest` returns signed bytes, so mask before padding. */

@@ -15,6 +15,7 @@ dependencies.
 | `scripts/` | `sync-config.sh`, `check-formulas.js` |
 | `test/` | the suite: `node --test test/`, with the Apps Script fakes in `test/helpers/` |
 | `docs/` | `gotchas.md` is the one to read before touching a formula |
+| `examples/` | sample assets to copy into your own Drive, the document logo among them |
 
 Each bootstrap file is named for what you run from it, and the prefix is the promise. A **`Setup*`** builds or repairs
 the structure of the sheet, is idempotent, and is safe to run at any time — every one of them is in `setupAll`. A

@@ -71,9 +71,10 @@ a concept row is filled *and* says `Concept`, a closed venue is struck through *
 address is filled *and* named in a hygiene check — which keeps the sheet readable printed in black and white. Whether
 your outputs need to meet a particular contrast standard is your call, not this codebase's.
 
-**`doc.logo.fileName`.** Optional. Drop an image with that name into the project folder and `setupDocument` finds it and
-prints its id and digest. The digest matters: the document binds the logo by **id**, so replacing the file later with a
-differently-sized image renders a blurry logo and raises nothing.
+**`doc.logo.fileName`.** Optional. Drop an image with that name into the folder the spreadsheet lives in, and step 5
+reports its id and digest. The digest matters: the document binds the logo by **id**, so replacing the file later with a
+differently-sized image renders a blurry logo and raises nothing. `examples/logo.png` is one to try it with,
+drawn in the palette's own colours at the size the document renders.
 
 ## Script Properties
 

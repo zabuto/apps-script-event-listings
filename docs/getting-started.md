@@ -140,7 +140,7 @@ Reload the spreadsheet. It now has your configured menu, with:
   events booked into a closed venue.
 - **Refresh map export** — rebuilds the export tab and reports whether it is safe to import.
 - **Generate events document** — rebuilds the agenda document from every upcoming event.
-- **Save events PDF** — optional, a dated copy in the archive folder.
+- **Save events PDF** — optional, a dated copy in the archive folder. `examples/` holds one, built from the seed data.
 - **Install weekly refresh** — the trigger that keeps the document current. A trigger belongs to the account that
   installs it and is invisible to every other account, so it matters *who* presses it; see
   [`operations.md`](operations.md).
