@@ -824,16 +824,14 @@ function titleBlock_(body, events) {
     .setForegroundColor(palette.secondary);
   subtitle.setSpacingAfter(2);
 
-  // First event to last, so the line states what the reader actually gets rather than a window that
-  // was decided in advance.
-  const range = events.length
-    ? `${Utilities.formatDate(events[0].start, tz, 'd MMMM yyyy')} – ` +
-      `${Utilities.formatDate(events[events.length - 1].start, tz, 'd MMMM yyyy')}`
-    : CONFIG.doc.noEvents;
-  const span = body.appendParagraph(range);
-  span.editAsText().setFontFamily(font).setFontSize(11).setBold(true)
-    .setForegroundColor(palette.primaryDark);
-  span.setSpacingAfter(2);
+  // Only the empty listing gets a line of its own here: a document with events shows its own dates
+  // row by row, while an empty one would otherwise be a heading followed by nothing.
+  if (!events.length) {
+    const empty = body.appendParagraph(CONFIG.doc.noEvents);
+    empty.editAsText().setFontFamily(font).setFontSize(11).setBold(true)
+      .setForegroundColor(palette.primaryDark);
+    empty.setSpacingAfter(2);
+  }
 
   const stamp = Utilities.formatDate(new Date(), tz, 'd MMMM yyyy');
   const meta = body.appendParagraph(`${events.length} events · updated ${stamp}` +

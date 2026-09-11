@@ -284,24 +284,25 @@ test('the link range is recomputed per organiser, not fixed', () => {
 
 const textsOf = model => paragraphsIn(model.body).map(paragraph => paragraph.text);
 
-test('the title block names the document, the brand and the span it covers', () => {
+test('the title block names the document and the brand, and counts the events', () => {
   const events = [listed({ start: dayIn(1, 5) }), listed({ start: dayIn(2, 20) })];
   const texts = textsOf(onABody(body => src.titleBlock_(body, events)));
 
   assert.strictEqual(texts[0], CONFIG.doc.title);
   assert.strictEqual(texts[1], `${CONFIG.brand.name} — ${CONFIG.brand.tagline}`);
-  assert.match(texts[2], / – /, 'the span line does not read as a range');
-  assert.match(texts[3], /^2 events · updated /);
+  assert.match(texts[2], /^2 events · updated /);
 });
 
-test('the span is the first and last event, not a window decided in advance', () => {
+test('a populated listing carries no date span above the events', () => {
   const events = [listed({ start: dayIn(1, 5) }), listed({ start: dayIn(2, 20) })];
   const texts = textsOf(onABody(body => src.titleBlock_(body, events)));
-  assert.strictEqual(texts[2],
-    `${formatDate(dayIn(1, 5), TZ, 'd MMMM yyyy')} – ${formatDate(dayIn(2, 20), TZ, 'd MMMM yyyy')}`);
+  const first = formatDate(dayIn(1, 5), TZ, 'd MMMM yyyy');
+  const last = formatDate(dayIn(2, 20), TZ, 'd MMMM yyyy');
+  assert.ok(!texts.some(text => text.includes(`${first} – ${last}`)),
+    `the title block still prints a date span: ${JSON.stringify(texts)}`);
 });
 
-test('an empty listing says so instead of printing an empty range', () => {
+test('an empty listing says so instead of leaving the heading bare', () => {
   const texts = textsOf(onABody(body => src.titleBlock_(body, [])));
   assert.strictEqual(texts[2], CONFIG.doc.noEvents);
   assert.match(texts[3], /^0 events · updated /);
@@ -331,9 +332,9 @@ function withMapUrl(url, render) {
 test('the meta line ends with the map URL when one is configured', () => {
   const texts = withMapUrl(MAP_URL,
     () => textsOf(onABody(body => src.titleBlock_(body, [listed({})]))));
-  assert.match(texts[3], /^1 events · updated /);
-  assert.ok(texts[3].endsWith(` · ${MAP_URL}`),
-    `the map URL is not on the meta line: "${texts[3]}"`);
+  assert.match(texts[2], /^1 events · updated /);
+  assert.ok(texts[2].endsWith(` · ${MAP_URL}`),
+    `the map URL is not on the meta line: "${texts[2]}"`);
 });
 
 test('the meta line has no dangling separator when no map URL is configured', () => {
@@ -342,8 +343,8 @@ test('the meta line has no dangling separator when no map URL is configured', ()
   // config, since `mapUrl` is an installer setting and either state must pass.
   const texts = withMapUrl('',
     () => textsOf(onABody(body => src.titleBlock_(body, [listed({})]))));
-  assert.match(texts[3], /^1 events · updated \d{1,2} [A-Za-z]+ \d{4}$/,
-    `the meta line is not exactly "N events · updated <date>": "${texts[3]}"`);
+  assert.match(texts[2], /^1 events · updated \d{1,2} [A-Za-z]+ \d{4}$/,
+    `the meta line is not exactly "N events · updated <date>": "${texts[2]}"`);
 });
 
 test('the footer credit ends with the map URL when one is configured', () => {
