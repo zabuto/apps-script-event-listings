@@ -16,16 +16,7 @@ no billing account. It runs entirely inside a personal Google account — Sheets
 all on the free tier, all owned by whoever signs in. The only thing installed anywhere is `clasp`, on your own machine,
 to push the code up.
 
-**The spreadsheet is the only copy of the data.** Nothing here backs it up, keeps a copy, or can restore one, and the
-outputs are not copies either. What that means in practice, and what `captureSheetData` does and does not preserve:
-[`docs/operations.md`](docs/operations.md#the-sheet-is-the-only-copy).
-
 **Noncommercial licence.** [PolyForm Noncommercial 1.0.0](LICENSE) — no commercial use.
-
-**Nothing private is in this repo.** Every file id lives in Script Properties rather than in the code, and the sample
-events, organisers, and handles are invented. Ten of the twelve sample venues are real and nine carry their published
-address, because an invented street does not geocode — a seed full of them would demo the map by showing you an empty
-one. [`docs/getting-started.md`](docs/getting-started.md) step 4 has the breakdown.
 
 ## What you get
 
@@ -86,6 +77,15 @@ node --test test/     # the whole suite
 so there is no `package.json` and no framework to pull in: clone the repo and run the command. What it covers, what it
 deliberately cannot, and how to add a case: [`docs/testing.md`](docs/testing.md).
 
+**Nothing private is in this repo.** Every file id lives in Script Properties rather than in the code, and the sample
+events, organisers, and handles are invented. Ten of the twelve sample venues are real and nine carry their published
+address, because an invented street does not geocode — a seed full of them would demo the map by showing you an empty
+one. [`docs/getting-started.md`](docs/getting-started.md) step 4 has the breakdown.
+
+**The spreadsheet is the only copy of the data.** Nothing here backs it up, keeps a copy, or can restore one, and the
+outputs are not copies either. What that means in practice, and what `captureSheetData` does and does not preserve:
+[`docs/operations.md`](docs/operations.md#the-sheet-is-the-only-copy).
+
 ## Documentation
 
 | | |
@@ -102,7 +102,7 @@ answers, wrongly.
 
 ## Requirements
 
-A Google account, and `node` — for `clasp`, and for the test suite. Nothing else, and nothing recurring.
+A Google account, and `node` — for `clasp`, and for the test suite.
 
 The build also uses the Sheets advanced service: a checkbox rather than a paid API, declared in the manifest so the push
 carries it up. It adds a scope, so Apps Script asks you to authorise once more before it works. Without it the build
