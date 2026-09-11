@@ -118,3 +118,8 @@ not, means passing on the terms and the `Required Notice:` line from [`LICENSE`]
 **Provided as is. No warranty, no guarantees, no support.** It is published because it might save somebody else the
 debugging sessions in `docs/gotchas.md`, not because it is a product. Issues and pull requests are welcome and may sit
 unanswered; forking is entirely fine.
+
+---
+
+**Topics**: `google-apps-script` `google-sheets` `google-docs` `google-my-maps` `clasp` `spreadsheet` `events`
+`agenda` `no-build` `zero-dependency`
