@@ -48,10 +48,13 @@ function reportState() {
   report_(`  ${CONFIG.tabs.events} rows with a title: ` + countFilled_(column('events', 'title')));
   const closed = column('venues', 'status').getDisplayValues()
     .filter(row => row[0] === values.venueStatus.closed).length;
+  const cityOnly = column('venues', 'cityOnly').getValues()
+    .filter(row => cityOnlyVenue_(row[0])).length;
   report_(`  ${CONFIG.tabs.venues}: ${countFilled_(column('venues', 'name'))}` +
     ` · with an address: ${countFilled_(column('venues', 'address'))}` +
     ` · with a postcode: ${countFilled_(column('venues', 'postcode'))}` +
     ` · with a city: ${countFilled_(column('venues', 'city'))}` +
+    ` · city only: ${cityOnly}` +
     ` · closed: ${closed}`);
   report_(`  ${CONFIG.tabs.organisers}: ${countFilled_(column('organisers', 'name'))}` +
     ` · with a handle: ${countFilled_(column('organisers', 'social'))}` +

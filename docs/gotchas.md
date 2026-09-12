@@ -183,14 +183,21 @@ Hence the `COUNTIFS` guard around the whole export formula.
 
 ## Privacy
 
-**A substring match cries wolf.** Matching `house|home|huis` against venue notes flags any venue whose name merely
-contains one of those — compound-friendly languages make that a certainty. A check that flags correct rows is a check
-maintainers stop reading. Whole phrases only, from `CONFIG.privacy.cityOnlyMarkers`, and the same list drives both
-consequences so they cannot disagree.
+**A decision a check acts on is a value, never a phrase in free text.** Text matching fails in both directions and the
+two cannot be fixed at once. A substring flags whatever merely contains it: look for `huis` and every venue whose name
+ends in `-huis` is flagged, which compound-friendly languages make a certainty. A whole phrase misses instead: it does
+not read the *not* in front of it, and the maintainer who writes the same thing in their own words gets nothing. A
+check that flags correct rows is one maintainers stop reading; a check that misses a flag publishes an address. So a
+decision gets a column with a single value that carries it — here the `City only?` tick box, which the conditional
+format tests as `=TRUE`, the address worklist as `<>TRUE`, and `cityOnlyVenue_` compares strictly against `true` in
+both projects. Text in the cell is a tick in none of them, which matters because `Boolean('FALSE')` is `true`: a reader
+looser than this exempts a venue the sheet goes on nagging about, and takes the street-number report off the same row.
 
 **A private column is one edit away from being published.** The rule here is absolute: no output reads a `(private)`
 column — not the map, the document, the dashboard, or the `When` string. Wording that has to be published lives in
-`Config.gs`; wording that must not lives in the sheet.
+`Config.gs`; wording that must not lives in the sheet. No formula reads one either, not even the ones that never leave
+the sheet: the venues rules and the hygiene checks are held to the same rule in `privacy.test.js`, so a note is never
+the thing a rule happens to be looking at when somebody extends it into an output.
 
 **A city-only venue with a street number is the shape a leak takes.** It goes public at the next map refresh, so
 `checkData` reports it as an issue rather than a note.

@@ -169,10 +169,21 @@ test('a venue with no address is reported', () => {
 });
 
 test('a city-only venue is not nagged for the address it is never going to have', () => {
-  for (const marker of CONFIG.privacy.cityOnlyMarkers) {
-    assertClean({ venues: [venue({ name: 'Somewhere', city: 'Amsterdam',
-      status: venueStatus.active, notesPrivate: `${marker} — ask the organiser` })] },
-      `a venue marked "${marker}" was nagged for an address`);
+  assertClean({ venues: [venue({ name: 'Somewhere', city: 'Amsterdam',
+    status: venueStatus.active, cityOnly: true })] },
+    'a venue with its City only? box ticked was nagged for an address');
+});
+
+test('a box holding text is not ticked, so the venue stays on the worklist', () => {
+  // `Boolean('FALSE')` is true, and the sheet's own rule compares with `=TRUE` and gets FALSE. A
+  // reader looser than that would exempt a venue the sheet goes on nagging about — and would take
+  // the street-number report off the same row, which is the half that protects an address.
+  for (const cell of ['TRUE', 'FALSE', 'yes', 1]) {
+    assert.match(
+      report({ venues: [venue({ name: 'Somewhere', city: 'Amsterdam',
+        status: venueStatus.active, cityOnly: cell })] }),
+      /"Somewhere" has no address/,
+      `${JSON.stringify(cell)} in the box was read as a tick`);
   }
 });
 
@@ -185,7 +196,7 @@ test('a street number on a city-only venue is reported — that is the shape a l
   // It goes public the moment the map is re-imported, so this one names the deadline.
   const message = report({ venues: [venue({ name: 'A Living Room',
     address: 'Prinsengracht 12', city: 'Amsterdam', status: venueStatus.active,
-    notesPrivate: 'house show, private address' })] });
+    cityOnly: true })] });
   assert.match(message, /is marked city-only but its address has a street number/);
   assert.match(message, /before the next map refresh/);
 });
@@ -216,10 +227,28 @@ test('a street number on a city-only venue is reported however the address is wr
   for (const address of IDENTIFYING_ADDRESSES) {
     assert.match(
       report({ venues: [venue({ name: 'A Living Room', address: address, city: 'Amsterdam',
-        status: venueStatus.active, notesPrivate: 'house show' })] }),
+        status: venueStatus.active, cityOnly: true })] }),
       /is marked city-only but its address has a street number/,
       `"${address}" identifies a building and was not reported`);
   }
+});
+
+test('a postcode on a city-only venue is reported, whatever its address column holds', () => {
+  // The geocoded line is `address, postcode city`, so the postcode publishes one side of one block
+  // the moment the address column holds anything — and a place name there is correct, which makes
+  // this the combination nobody would look at twice.
+  for (const address of ['', 'Amsterdam-Noord']) {
+    const message = report({ venues: [venue({ name: 'A Living Room', address: address,
+      postcode: '1011 AA', city: 'Amsterdam', status: venueStatus.active, cityOnly: true })] });
+    assert.match(message, /is marked city-only but has a postcode/);
+    assert.match(message, /before the next map refresh/);
+  }
+});
+
+test('a postcode on a venue nobody ticked is what the sheet is for', () => {
+  assertClean({ venues: [venue({ name: 'Beurs van Berlage', address: 'Damrak 243',
+    postcode: '1012 LP', city: 'Amsterdam', status: venueStatus.active })] },
+    'an ordinary venue was reported for carrying a postcode');
 });
 
 test('a city-only venue carrying only a place name is right, and is left alone', () => {
@@ -227,113 +256,17 @@ test('a city-only venue carrying only a place name is right, and is left alone',
   // maintainer to delete correct data. Apostrophes, hyphens and spaces are not digits.
   for (const address of ['Amsterdam', 'Amsterdam-Noord', "'s-Hertogenbosch", 'Bergen op Zoom']) {
     assertClean({ venues: [venue({ name: 'A Living Room', address: address, city: 'Amsterdam',
-      status: venueStatus.active, notesPrivate: 'house show' })] },
+      status: venueStatus.active, cityOnly: true })] },
       `"${address}" is a place name and was reported as a street number`);
   }
 });
 
-/* ── the same rule reached by name instead of by marker ─────────────────────────────────────── */
-
-/*
- * A venue is city-only two ways: a marker phrase in its notes, or its name in
- * `CONFIG.privacy.addresslessByDesign`. The second carries both consequences of the first — never
- * nagged for a missing address, never allowed a street number.
- *
- * The list is empty in the shipped config, so these set it, as `city-only-marker.test.js` does for
- * the marker list.
- */
-
-/** Runs `body` with `addresslessByDesign` set to `names`. */
-function withAddresslessByDesign(names, body) {
-  const saved = CONFIG.privacy.addresslessByDesign;
-  CONFIG.privacy.addresslessByDesign = names;
-  try {
-    return body();
-  } finally {
-    CONFIG.privacy.addresslessByDesign = saved;
-  }
-}
-
-test('a venue named in addresslessByDesign is not nagged for an address', () => {
-  withAddresslessByDesign(['The Back Room'], () => {
-    assertClean({ venues: [venue({ name: 'The Back Room', city: 'Amsterdam',
-      status: venueStatus.active })] }, 'a venue listed as addressless by design was nagged');
-  });
-});
-
-test('a street number on a venue named in addresslessByDesign is reported all the same', () => {
-  // The exemption from the nag is not an exemption from the privacy rule: both consequences follow
-  // from one setting, whichever way a venue joins it.
-  withAddresslessByDesign(['The Back Room'], () => {
-    const message = report({ venues: [venue({ name: 'The Back Room', address: 'Kade 1',
-      city: 'Amsterdam', status: venueStatus.active })] });
-    assert.match(message, /"The Back Room" is marked city-only but its address has a street number/);
-    assert.match(message, /before the next map refresh/);
-  });
-});
-
-test('the list matches a whole venue name, not a venue whose name merely starts the same', () => {
-  // `Paradiso` on the list must not exempt `Paradiso Noord`. The marker path searches the notes
-  // for a substring; this path is a venue *key*, and every other output resolves a venue by its
-  // exact name.
-  withAddresslessByDesign(['Paradiso'], () => {
-    assert.match(
-      report({ venues: [venue({ name: 'Paradiso Noord', city: 'Amsterdam',
-        status: venueStatus.active })] }),
-      /"Paradiso Noord" has no address/);
-  });
-});
-
-test('a name typed with stray spaces still matches, because the sheet is typed by hand', () => {
-  withAddresslessByDesign(['The Back Room'], () => {
-    assertClean({ venues: [venue({ name: '  The Back Room  ', city: 'Amsterdam',
-      status: venueStatus.active })] }, 'the name was compared untrimmed');
-  });
-});
-
-test('an empty list exempts nobody, which is what an unset setting has to mean', () => {
-  withAddresslessByDesign([], () => {
-    assert.match(
-      report({ venues: [venue({ name: 'The Back Room', city: 'Amsterdam',
-        status: venueStatus.active })] }),
-      /"The Back Room" has no address/);
-  });
-});
-
-test('the same name reaches the sheet\'s own rule, so the script and the fill agree', () => {
-  // One vocabulary, two consequences. The sheet's half is a conditional format rather than a
-  // report, so agreement is asserted structurally: the rule tests the venue name against the same
-  // string this check compares it to.
-  const boot = loadProject('bootstrap');
-  const savedVenues = boot.CONFIG.privacy.addresslessByDesign;
-  const savedMarkers = boot.CONFIG.privacy.cityOnlyMarkers;
-  boot.CONFIG.privacy.addresslessByDesign = ['The Back Room'];
-  boot.CONFIG.privacy.cityOnlyMarkers = [];
-  try {
-    const rule = boot.venueAddresslessByDesign_();
-    const nameCell = '$' + boot.columnLetter_('venues', 'name') + '2';
-    assert.ok(rule.includes(`${nameCell}="The Back Room"`),
-      `the sheet's rule does not test the venue name against the list: ${rule}`);
-  } finally {
-    boot.CONFIG.privacy.addresslessByDesign = savedVenues;
-    boot.CONFIG.privacy.cityOnlyMarkers = savedMarkers;
-  }
-});
-
-test('a name matches whatever its case, as a venue name does everywhere else', () => {
-  // `XLOOKUP` resolves an event's venue case-insensitively, and the sheet's own rule is
-  // `$A2="…"`, which ignores case too. Both consequences follow from a mis-cased entry, or the
-  // script and the sheet would disagree about which venues are city-only.
-  withAddresslessByDesign(['the back room'], () => {
-    assertClean({ venues: [venue({ name: 'The Back Room', city: 'Amsterdam',
-      status: venueStatus.active })] }, 'a lowercase entry did not exempt the venue');
-  });
-  withAddresslessByDesign(['The Back Room'], () => {
-    assert.match(
-      report({ venues: [venue({ name: 'THE BACK ROOM', address: 'Kade 1', city: 'Amsterdam',
-        status: venueStatus.active })] }),
-      /"THE BACK ROOM" is marked city-only but its address has a street number/);
-  });
+test('an address on a venue nobody ticked is nobody\'s business to report', () => {
+  // The street-number report is the flag's second consequence, not a rule about addresses: every
+  // other venue in the sheet is supposed to carry one.
+  assertClean({ venues: [venue({ name: 'Beurs van Berlage', address: 'Damrak 243',
+    postcode: '1012 LP', city: 'Amsterdam', status: venueStatus.active })] },
+    'a venue with an ordinary address was reported as a breach');
 });
 
 /* ── the organisers tab ─────────────────────────────────────────────────────────────────────── */
@@ -498,15 +431,6 @@ test('a name that differs by more than case is still unknown', () => {
       venues: [OPEN_VENUE],
     }),
     /unknown venue "de nieuwe anitas"/);
-});
-
-test('a venue named in addresslessByDesign matches in another case too', () => {
-  // The same rule reached by the other path. The sheet's own spelling of it is `$A2="…"`, which
-  // ignores case like every other venue-name comparison.
-  withAddresslessByDesign(['The Back Room'], () => {
-    assertClean({ venues: [venue({ name: 'the back room', city: 'Amsterdam',
-      status: venueStatus.active })] }, 'the name was compared case-sensitively');
-  });
 });
 
 /* ── what checkData is reading through ──────────────────────────────────────────────────────── */

@@ -131,20 +131,15 @@ function venueIncomplete_() {
     `${at('city')}=""))`;
 }
 
-/** True where the venue is addressless *on purpose*: a marker in its notes, or a name on the list. */
-function venueAddresslessByDesign_() {
-  const notes = '$' + columnLetter_('venues', 'notesPrivate') + '2';
-  const name = '$' + columnLetter_('venues', 'name') + '2';
-  // Both lists are typed by a person, so both go through `quoteLiteral_`: a phrase or a venue name
-  // carrying a quote would otherwise close the string early and leave a formula the offline check
-  // passes and the sheet rejects. `cityOnlyMarker_()` escapes the same two lists for its regex in
-  // the bound project; this is the other half.
-  const tests = CONFIG.privacy.cityOnlyMarkers
-    .map(marker => `ISNUMBER(SEARCH(${quoteLiteral_(marker)},${notes}))`)
-    .concat(CONFIG.privacy.addresslessByDesign.map(venue => `${name}=${quoteLiteral_(venue)}`));
-  // `SEARCH` over a literal, never an array constant: `{…}` array literals use a *different*
-  // separator again per locale, and this codebase only translates argument separators.
-  return tests.length ? `OR(${tests.join(',')})` : 'FALSE';
+/**
+ * True where the venue is addressless *on purpose*: its `City only?` box is ticked.
+ *
+ * `=TRUE`, not the bare cell: a blank cell is what an untouched row holds, and a bare reference
+ * inside `AND` would have to coerce it. Text that spells the word is not the boolean either, which
+ * is the comparison `cityOnlyVenue_` makes on the script side.
+ */
+function venueCityOnly_() {
+  return '$' + columnLetter_('venues', 'cityOnly') + '2=TRUE';
 }
 
 /**
@@ -158,6 +153,10 @@ function venueAddresslessByDesign_() {
  *
  * Neither may be the solid primary fill: that is the header row and the unknown-venue error, and a
  * missing postcode is neither a heading nor a broken reference.
+ *
+ * It ends by having the sheet count the ticked `City only?` boxes itself, because the exception rule
+ * turns on a boolean literal and a rule that matches nothing looks exactly like a sheet with nothing
+ * to except.
  */
 function setVenuesFormatting_(ss, separator) {
   const venues = sheetFor_(ss, 'venues');
@@ -182,7 +181,7 @@ function setVenuesFormatting_(ss, separator) {
   // a city-only venue that does get a full address goes uncoloured like any other complete row.
   rules.push(SpreadsheetApp.newConditionalFormatRule()
     .whenFormulaSatisfied(localizeFormula_(
-      `=AND(${name}<>"",${venueIncomplete_()},${venueAddresslessByDesign_()})`, separator))
+      `=AND(${name}<>"",${venueIncomplete_()},${venueCityOnly_()})`, separator))
     .setBackground(palette.infoFill).setFontColor(palette.ink)
     .setRanges([range]).build());
 
@@ -192,26 +191,24 @@ function setVenuesFormatting_(ss, separator) {
     .setRanges([range]).build());
 
   venues.setConditionalFormatRules(rules);
-  report_(`Conditional formatting on ${CONFIG.tabs.venues}: closed (struck through), addressless ` +
-          `by design (info fill), incomplete address (warn fill) — separator "${separator}"`);
+  report_(`Conditional formatting on ${CONFIG.tabs.venues}: closed (struck through), city only ` +
+          `(info fill), incomplete address (warn fill) — separator "${separator}"`);
+
+  // A conditional format rule is invisible to a log, and the exception turns on a boolean literal.
+  reportCityOnlyFlag_(ss, separator);
 }
 
 /**
  * Names the rows the two rules will actually paint.
  *
  * The rules themselves are invisible to a log, so this evaluates the same test in JavaScript and
- * prints the venues it hits: a longer by-design list means a maintainer added a city-only venue, a
- * longer incomplete list means one added a venue and stopped halfway.
+ * prints the venues it hits: a longer city-only list means a maintainer ticked another box, a longer
+ * incomplete list means one added a venue and stopped halfway.
  */
 function reportVenuesFormatting_(ss) {
   const venues = sheetFor_(ss, 'venues');
   const rows = Math.max(venues.getLastRow() - 1, 0);
-  // Through the shared helpers, not a regex and an `indexOf` of its own: this reports on the rules
-  // written above, so it has to answer the way they do — an empty marker list exempting nobody, and
-  // a name matching whatever its case.
-  const markers = cityOnlyMarker_();
-  const addresslessByName = new Set(CONFIG.privacy.addresslessByDesign.map(lookupKey_));
-  const byDesign = [];
+  const cityOnly = [];
   const incomplete = [];
   const closed = [];
 
@@ -223,15 +220,16 @@ function reportVenuesFormatting_(ss) {
       if (!name) return;
       if (value('status') === CONFIG.values.venueStatus.closed) { closed.push(name); return; }
       if (value('address') !== '' && value('postcode') !== '' && value('city') !== '') return;
-      const deliberate = markers.test(String(value('notesPrivate'))) ||
-        addresslessByName.has(lookupKey_(name));
-      (deliberate ? byDesign : incomplete).push(name);
+      // Through the shared helper, not a comparison of its own: this reports on the rule written
+      // above, so it has to answer the way the sheet's `=TRUE` does.
+      (cityOnlyVenue_(value('cityOnly')) ? cityOnly : incomplete).push(name);
     });
   }
 
   report_(`Conditional format rules on ${CONFIG.tabs.venues}: ` +
     venues.getConditionalFormatRules().length);
-  report_('  addressless by design: ' + (byDesign.length ? byDesign.join(' · ') : 'none'));
+  report_('  city only, so no address expected: ' +
+    (cityOnly.length ? cityOnly.join(' · ') : 'none'));
   report_('  incomplete address: ' +
     (incomplete.length ? incomplete.length + ' — ' + incomplete.join(' · ') : CONFIG.values.clean));
   report_('  closed: ' + (closed.length ? closed.length + ' — ' + closed.join(' · ') : 'none'));

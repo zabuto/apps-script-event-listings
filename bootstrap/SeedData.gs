@@ -87,8 +87,9 @@ function seedVenues_() {
     ['Schouwburg Amstelveen', 'Amstelveen', 'Playing at a temporary location during a renovation'],
     ['Theater De Omval', 'Diemen', ''],
     ['Zaantheater', 'Zaandam', ''],
-    // Invented, and deliberately so: a venue that carries a city and nothing more.
-    ['Living Room Sessions', 'Amsterdam', 'House show — city only, never a street address'],
+    // Invented, and deliberately so: a venue that carries a city and nothing more. What makes it
+    // one is the ticked `City only?` box in `seedVenueDetails_`, not this note.
+    ['Living Room Sessions', 'Amsterdam', 'House show — ask the organiser'],
     // Invented as well. Its only event is in the past, so a closed venue never reaches the map.
     ['Zaal Zeeburg', 'Amsterdam', 'Closed, kept for its history'],
   ];
@@ -97,10 +98,11 @@ function seedVenues_() {
 /**
  * The hand-researched venue columns, keyed by venue name.
  *
- * `status` is in here because closing a venue is a human decision nothing can regenerate: the seeding
- * step carries it over from the sheet, and carry-over is lost the moment the spreadsheet is deleted —
- * which is exactly the case this file exists for. It is omitted where it is the default, so a closed
- * venue is impossible to miss.
+ * `status` and `cityOnly` are in here because closing a venue and declaring one city-only are human
+ * decisions nothing can regenerate: the seeding step carries them over from the sheet, and
+ * carry-over is lost the moment the spreadsheet is deleted — which is exactly the case this file
+ * exists for. Both are omitted where they hold their default, so a closed venue and a city-only one
+ * are impossible to miss.
  */
 function seedVenueDetails_() {
   return {
@@ -125,9 +127,10 @@ function seedVenueDetails_() {
     // approximate rather than leaving you to notice it.
     'Boom Chicago': { url: 'boomchicago.nl' },
 
-    // No address either, but on purpose: the marker in its notes is what keeps every check quiet
-    // about it. A house show carries the city, and the organiser is how a reader finds the rest.
-    'Living Room Sessions': {},
+    // No address either, but on purpose: the ticked box is what keeps every check quiet about it,
+    // and what makes a street number typed into this row a reported breach. A house show carries the
+    // city, and the organiser is how a reader finds the rest.
+    'Living Room Sessions': { cityOnly: true },
 
     // Closed — the one row the `status` field described above exists for.
     'Zaal Zeeburg': { status: 'Closed' },

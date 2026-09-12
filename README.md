@@ -23,8 +23,9 @@ to push the code up.
 **In the spreadsheet — what maintainers work in.** Seven tabs: the map export, a read-me, the three you type in, a
 dashboard, and a tab of picker lists and hygiene checks. An unknown venue is *refused* by the dropdown rather than
 accepted and later reported. The city fills itself in from the venue. A closed venue leaves the picker but keeps its
-history. Generated tabs and computed columns are protected, and the dashboard results carry a second, warning-only
-protection on top.
+history. A venue that must not publish its address is one ticked box, and a street number typed onto that row is
+reported before the next map refresh. Generated tabs and computed columns are protected, and the dashboard results
+carry a second, warning-only protection on top.
 
 **In the menu — what maintainers run.** Check the data, rebuild the map export, rebuild the document, save a dated PDF,
 install the weekly trigger. Each one ends with a dialog saying what it actually did — read back from the live file, not

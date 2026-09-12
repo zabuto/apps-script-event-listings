@@ -117,6 +117,11 @@ function writeVenues_(sheet) {
     row[columnIndex_('venues', 'url')] = pick('url', seed.url);
     row[columnIndex_('venues', 'notesPrivate')] = literal_(pick('notesPrivate', seed.notes, notes));
     row[columnIndex_('venues', 'status')] = carried('status') || seed.status || active;
+    // The one venues column with a privacy consequence, so the carry-over is counted: a run that
+    // dropped the tick would otherwise report the same line as one that kept it. A box has no third
+    // state, so the seed's own tick comes back on a reseed — the safe direction, since the flag only
+    // ever withholds an address.
+    row[columnIndex_('venues', 'cityOnly')] = cityOnlyVenue_(pick('cityOnly', seed.cityOnly));
     return row;
   });
 

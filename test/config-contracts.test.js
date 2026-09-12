@@ -165,10 +165,10 @@ test('both manifests name the same zone as CONFIG.timeZone', () => {
   }
 });
 
-test('city-only markers are whole phrases, lowercase, and non-empty', () => {
-  for (const marker of CONFIG.privacy.cityOnlyMarkers) {
-    assert.ok(marker.trim().length > 0, 'an empty marker would match every venue');
-    assert.strictEqual(marker, marker.toLowerCase(),
-      'markers are matched case-insensitively; keep them lowercase');
-  }
+test('the city-only flag is a venues column a maintainer types into', () => {
+  // The privacy rule turns on this column, and it is a decision per venue: `computed: true` would
+  // make it a formula, which is a cell nobody can tick.
+  const flag = CONFIG.columns.venues.find(column => column.key === 'cityOnly');
+  assert.ok(flag, 'the venues contract has no cityOnly column — the flag the privacy rule reads');
+  assert.strictEqual(flag.computed, undefined, 'the flag is typed by a maintainer, not computed');
 });

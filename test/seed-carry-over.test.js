@@ -112,6 +112,28 @@ test('the sheet wins over the seed, rather than merely filling a gap it left', (
     'Typed on the sheet 1', 'the seed overwrote an address the sheet already held');
 });
 
+test('a ticked City only? box survives the reseed of the venue it is on', () => {
+  // The flag is the one column on the venues tab with a privacy consequence: losing it in a reseed
+  // puts the venue back on the address worklist, and the next person to work the worklist fills in
+  // the street the tick existed to keep out of the sheet.
+  const seeded = seedRows('seedVenueDetails_');
+  const venue = plainName(seedRows('seedVenues_')
+    .map(row => row[0])
+    .filter(name => !(seeded[name] || {}).cityOnly));
+  boot.log_.length = 0;                    // the writers append; this test reads its own run's line
+  const grid = reseed('writeVenues_', 'venues',
+    [rowFor(CONFIG, 'venues', { name: venue, cityOnly: true })]);
+
+  assert.strictEqual(
+    rowNamed(grid, 'venues', 'name', venue)[boot.columnIndex_('venues', 'cityOnly')], true,
+    'a tick typed on the sheet was lost by the reseed, and the venue is back on the worklist');
+
+  // The report is the proof: a writer that carried the tick and did not count it reads exactly like
+  // one that dropped it, and the count is all anybody sees of a run that touched twelve rows.
+  assert.match(boot.log_.join('\n'),
+    new RegExp(`carried over from the sheet:.*${boot.headerOf_('venues', 'cityOnly')}`));
+});
+
 /* ── what the carry-over may not invent ─────────────────────────────────────────────────────── */
 
 test('an event the sheet knows nothing about keeps the note the seed gives it', () => {

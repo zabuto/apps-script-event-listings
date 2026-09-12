@@ -331,9 +331,11 @@ function setValidation_(ss) {
     .setDataValidation(rejectInvalid_(lists.getRange(listRange_('eventStatus'))));
   venues.getRange(column('venues', 'status'))
     .setDataValidation(rejectInvalid_(lists.getRange(listRange_('venueStatus'))));
+  venues.getRange(column('venues', 'cityOnly')).setDataValidation(checkbox_());
 
-  report_('Validation set: venue (active only), organiser, event status, venue status — ' +
-          'invalid input refused, not merely warned about');
+  report_(`Validation set: venue (active only), organiser, event status, venue status, ` +
+          `${headerOf_('venues', 'cityOnly')} (tick box) — invalid input refused, not merely ` +
+          'warned about');
 }
 
 /* ──────────────────────────────────────────────────────────────── conditional formatting ── */

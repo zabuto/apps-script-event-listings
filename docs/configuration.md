@@ -27,7 +27,6 @@ the next sync silently overwrites your change.
 | `tabs`          | tab names — **and their order**, which is load-bearing                           |
 | `columns`       | the column contracts, by key and header                                          |
 | `values`        | the strings the statuses and computed columns use, in formulas and in code       |
-| `privacy`       | the phrases that mark a venue as city-only, and any venues addressless by design |
 | `mapExport`     | the five popup column labels, the country suffix, the title separator            |
 | `doc`           | the document's file name, title, wording, margins, logo and PDF archive          |
 | `weeklyRefresh` | which day and hour the document rebuilds itself                                  |
@@ -53,9 +52,10 @@ be reordered among themselves, and the `(private)` column is the last non-comput
 typed columns moves the headers and not the values, so move the data across in the same pass, or the two disagree
 silently.
 
-**`privacy.cityOnlyMarkers`.** Whole phrases, matched case-insensitively, never substrings. See
-[`gotchas.md`](gotchas.md#privacy) for what a substring match does to a venue whose name merely contains one of the
-words.
+**Where the city-only decision lives.** In the sheet, not here: it is the `City only?` box on the venue's own row. One
+cell, read by the conditional format, by the address worklist and by `checkData`, so the three cannot come to different
+conclusions about the same venue. See [`gotchas.md`](gotchas.md#privacy) for why a decision a check acts on is a value
+rather than a phrase anyone has to word.
 
 **`mapExport.headers`.** The labels are yours to change; the *count* is not. Exactly five columns are built — title,
 when, venue, organiser, location — and the code refuses to run with a different number rather than mislabelling a popup.

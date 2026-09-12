@@ -155,6 +155,7 @@ const CONFIG = {
       { key: 'city',         header: 'City' },
       { key: 'url',          header: 'Venue URL' },
       { key: 'status',       header: 'Status' },
+      { key: 'cityOnly',     header: 'City only?' },
       { key: 'notesPrivate', header: 'Notes (private)' },
     ],
     organisers: [
@@ -193,27 +194,6 @@ const CONFIG = {
     monthNames: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
     /** What a check that found nothing prints, so an empty cell always means "did not run". */
     clean: '✓ none',
-  },
-
-  /* ───────────────────────────────────────────────────────────────────────── privacy ───── */
-
-  privacy: {
-    /**
-     * Phrases in a venue's `Notes (private)` meaning *this venue carries a city and nothing more* —
-     * one vocabulary, two consequences: never nagged for a missing address, and a street number on
-     * one is a privacy breach.
-     *
-     * **Whole phrases, never substrings.** Matching `house|home|huis` flags a public bar whose name
-     * merely ends in `-huis` — a certainty in compound-friendly languages — and a check that cries
-     * wolf on correct rows stops being read.
-     */
-    cityOnlyMarkers: ['house show', 'city only', 'private address'],
-    /**
-     * Venues addressless *on purpose*, which must not be listed as incomplete work. Names as they
-     * appear in the venues tab; case is ignored, as everywhere else a venue is resolved by name.
-     * Prefer the marker above; this is for the rare venue whose notes you would rather leave empty.
-     */
-    addresslessByDesign: [],
   },
 
   /* ──────────────────────────────────────────────────────────────────── the map export ───── */

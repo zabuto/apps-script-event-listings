@@ -7,9 +7,11 @@
  * column shifts a letter, and a formula that spelled a position rather than a key starts reading
  * the note beside the title.
  *
- * What is deliberately *not* covered: the venues conditional-format rules and the hygiene checks
- * read `Notes (private)` on purpose. They stay inside the sheet, and the marker lives there rather
- * than in a list in the code so that the script and the sheet cannot hold two drifting copies.
+ * The venues rules and the hygiene checks are held to the rule as well, and they are the ones with
+ * a reason to break it: what makes a venue city-only is a flag in the sheet, and the sheet is where
+ * it has to live so that the script and the sheet cannot hold two drifting copies of it. The flag is
+ * a column of its own, so those rules read a cell that is theirs to read; a rule that reached into
+ * the notes instead would be one edit from a formula that publishes what it found there.
  */
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -252,6 +254,29 @@ test('the City lookup does not read the private note', () => {
 
 test('the Upcoming? column does not read the private note', () => {
   assertNoPrivate(boot, 'events', 'upcomingFormula_', boot.upcomingFormula_(), { local: true });
+});
+
+/* ── the rules that stay inside the sheet ───────────────────────────────────────────────────── */
+
+/*
+ * Nothing here is published, and that is exactly why it is checked: a formula that reads the private
+ * note is one `XLOOKUP` away from carrying it into an output, and the venues rules are the formulas
+ * with a motive — they decide what a venue is allowed to leave out.
+ */
+
+test('the venues completeness rules read no private column', () => {
+  assertNoPrivate(boot, 'venues', 'venueCityOnly_', boot.venueCityOnly_(), { local: true });
+  assertNoPrivate(boot, 'venues', 'venueIncomplete_', boot.venueIncomplete_(), { local: true });
+});
+
+test('no hygiene check reads a private column', () => {
+  const blocks = boot.checkBlocks_();
+  assert.ok(blocks.length > 0, 'there are no check blocks, so this test checks nothing');
+  for (const [column, label, formula] of blocks) {
+    for (const tabKey of ['events', 'venues', 'organisers']) {
+      assertNoPrivate(boot, tabKey, `the "${label}" check in ${column}`, formula);
+    }
+  }
 });
 
 /* ── the three outputs ──────────────────────────────────────────────────────────────────────── */
