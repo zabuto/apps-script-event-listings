@@ -42,7 +42,7 @@ projects declare a set of identically named helpers between them, and in one pro
 | `check-formulas.test.js` | runs `scripts/check-formulas.js` and fails on its verdict |
 | `table.test.js` | `table_` refusing a tab whose header row no longer matches the contract |
 | `data-check.test.js` | what `checkData` reports, and the three things it deliberately stays quiet about |
-| `city-only-marker.test.js` | `cityOnlyMarker_`, including the empty list that must match nothing |
+| `city-only-flag.test.js` | the `City only?` box: only a tick counts, and every reader of it agreeing |
 | `document-render.test.js` | what the agenda renderers put on the page — and that no `(private)` column reaches it |
 | `menu.test.js` | `onOpen` offering only items whose function exists, and never a leading or trailing separator |
 | `seed-carry-over.test.js` | the seed writers reading the sheet before they clear it, so hand-typed notes survive |

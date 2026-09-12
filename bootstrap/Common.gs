@@ -232,25 +232,20 @@ function lookupKey_(value) {
 }
 
 /**
- * The marker that says "this venue carries a city and nothing more".
+ * Whether a venue's `City only?` cell says *this venue carries a city and nothing more* — never
+ * nagged for a missing address, and never allowed to carry a street number.
  *
- * Whole phrases only, from `CONFIG.privacy.cityOnlyMarkers`. The same vocabulary reaches the sheet
- * as `venueAddresslessByDesign_` and as the `Venue without an address` check, and is read back
- * through here — three spellings of one list, which is why none of them may improvise.
+ * One cell, both consequences, and three readers held to this one answer: `venueCityOnly_` for the
+ * conditional format, the `Venue without an address` check for the sheet's own worklist, and
+ * `checkData` in the bound project.
+ *
+ * Strictly `true`, because the column is a checkbox and a ticked box is the boolean. Text that
+ * merely spells it — `TRUE` pasted over the box, `yes`, `ja` — is not ticked, and the sheet's own
+ * `=TRUE` comparison reads it as unticked too. Anything looser would have the script exempting a
+ * venue the sheet still nags about.
  */
-function cityOnlyMarker_() {
-  const phrases = CONFIG.privacy.cityOnlyMarkers
-    .map(phrase => phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-
-  // An empty list must match *nothing*, and `new RegExp('')` matches *everything* — the exact
-  // inversion, from a setting an installer is free to clear. Every venue would read as city-only:
-  // the missing-address nag goes quiet altogether, and every address carrying a street number is
-  // reported as a privacy breach, telling maintainers to delete correct data before the next map
-  // refresh. `(?!)` can never match. `venueAddresslessByDesign_` falls back to FALSE for the same
-  // reason, and the two spellings of this list have to agree: one vocabulary, both consequences.
-  if (!phrases.length) return /(?!)/;
-
-  return new RegExp(phrases.join('|'), 'i');
+function cityOnlyVenue_(value) {
+  return value === true;
 }
 
 
@@ -310,10 +305,11 @@ function setFormula_(range, formula, separator) {
 /**
  * A value as a formula string literal: wrapped in quotes, with any quote inside it doubled.
  *
- * Sheets escapes a quote by doubling it. Interpolating a config value raw closes the string early —
- * a marker `the "barn"` builds `SEARCH("the "barn"", …)` — and the offline check cannot see it,
- * because doubling a quote leaves the *count* even. It surfaces in the cell, as a parse error or as
- * a formula that quietly parses into something else.
+ * Sheets escapes a quote by doubling it. Interpolating a config value raw closes the string early: a
+ * `dateTba` reading `date "to be announced"` lands in the `When` column as
+ * `IF(A2="","date "to be announced"",…)`, four quotes that pair up wrongly. The offline check cannot
+ * see it either, because doubling a quote leaves the *count* even. It surfaces in the cell, as a
+ * parse error or as a formula that quietly parses into something else.
  *
  * **Every `Config.gs` value that reaches a formula goes through here** — the statuses, the scope
  * words, the day and month names, the unknown-venue marker, the map's title and country suffixes,
@@ -359,6 +355,21 @@ function rejectInvalid_(sourceRange) {
 }
 
 /**
+ * A tick box, and a column that refuses anything else.
+ *
+ * Validation rather than `insertCheckboxes()`: the rule is what makes the cell hold a boolean and
+ * nothing else, and text that merely spells `TRUE` is what both halves of the city-only test read as
+ * unticked. Without the refusal a pasted word sits in the box looking like a decision and counting
+ * as none.
+ */
+function checkbox_() {
+  return SpreadsheetApp.newDataValidation()
+    .requireCheckbox()
+    .setAllowInvalid(false)
+    .build();
+}
+
+/**
  * Protects a value the sheet would otherwise interpret.
  *
  * `setValues` behaves like typing: a leading apostrophe is the literal-text marker and gets
@@ -398,6 +409,24 @@ function probeInPlace_(sheet, separator, probes) {
   } finally {
     probes.forEach(probe => sheet.getRange(probe[1]).clearContent());
   }
+}
+
+/**
+ * Has the sheet count the ticked `City only?` boxes, in its own language.
+ *
+ * `=TRUE` is the one boolean literal this codebase writes into a formula, and both rules that turn on
+ * it hide a failure to parse it. The conditional format silently matches nothing, painting every
+ * city-only venue as unfinished work; the `Venue without an address` check sits inside `IFERROR`,
+ * which swallows the error and prints the clean marker for good. Both steps call this, because a
+ * step that writes one of those rules and does not evaluate the literal is reporting on a comparison
+ * it never saw the sheet make. The JavaScript read-backs cannot cover it: they agree with themselves
+ * whatever the sheet does.
+ */
+function reportCityOnlyFlag_(ss, separator) {
+  report_('  ' + probeValues_(ss, separator, [[
+    `rows the sheet reads as ${headerOf_('venues', 'cityOnly')}`,
+    `=SUMPRODUCT(--(${colRange_('venues', 'cityOnly')}=TRUE))`,
+  ]], '_flag_probe').join(''));
 }
 
 /** Evaluates read-only formulas on a throwaway tab and returns `label: value` lines. */

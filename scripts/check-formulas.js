@@ -131,8 +131,8 @@ section('the scaffolding project', function bootstrapProject() {
 
   console.log('venue rules');
   check('incomplete address', venueIncomplete_());
-  check('addressless by design', venueAddresslessByDesign_());
-  console.log('  ' + venueAddresslessByDesign_());
+  check('city only', venueCityOnly_());
+  console.log('  ' + venueCityOnly_());
 
   console.log('seed data');
   const venues = seedVenues_().map(venue => venue[0]);

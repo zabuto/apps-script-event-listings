@@ -15,6 +15,11 @@ My Maps. The export tab is a live formula and is already current; the map is the
 the spreadsheet → position column `Location`, title column `Title`. Deleting first is not optional: a layer keeps its
 own field list and only ever appends to it, so a re-import leaves any dropped column in every popup as an empty row.
 
+**A venue that must not publish its address.** Tick **City only?** on its row in the venues tab and leave the address
+empty: the checks stop asking for one, and the map puts the pin on the city. Typing a street number into a row with
+that box ticked is reported by **Check data**, and so is a postcode, because both reach the map with the address. The
+private notes column is free text nothing reads: notes there are for people, and the box is what the checks read.
+
 **Before publishing anything.** Menu → **Check data**. It reports what is wrong and stays quiet about what is merely
 unfinished — a concept event with no venue yet, a city-only venue with no address, and a past event at a venue that has
 since closed are all correct, and it says nothing about them.
@@ -42,6 +47,15 @@ refresh** once.
 The only quota worth knowing about is Apps Script's own: a consumer account gets 90 minutes of script runtime a day and
 20 triggers. A weekly rebuild of the document uses seconds of that, so the ceiling only matters if you start scheduling
 more.
+
+## Adding a column to a sheet in use — installer
+
+The build writes row 1 and moves nothing, so insert the column **in the sheet first**, at the position the contract
+gives it, and only then run `setupSkeleton`. Against a sheet whose columns do not line up, every column from there
+rightwards is relabelled where it stands: values sit one column left of the header describing them, and nothing
+afterwards says so — the contract read-back matches and every check reads the wrong column and reports clean. The
+private column is the last typed one, so anything inserted before it lands on the notes. Repair it by moving the values
+across, not by renaming headers.
 
 ## Checking that it is sound — installer
 

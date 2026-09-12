@@ -19,8 +19,14 @@
  * Keys, not positions: the same contract the rest of the codebase reads, so a reordered column
  * changes nothing here.
  *
- * `status` is in the list because closing a venue is a human decision nothing can regenerate. Its
- * default is given, so open venues stay out of the dump and a closed one is impossible to miss.
+ * `status` and `cityOnly` are in the list because closing a venue and declaring one city-only are
+ * human decisions nothing can regenerate. A default is given where the column has a value for one —
+ * so open venues stay out of the dump and a closed one is impossible to miss.
+ *
+ * A fourth entry marks a column the sheet holds as a **boolean**, which changes what may be written
+ * down for it: only the boolean itself. `SeedData.gs` is read back by `seedSheet`, and a quoted
+ * `'TRUE'` under a key the seed reads with `cityOnlyVenue_` lands as an unticked box while reading,
+ * to a human scanning the file, exactly like a ticked one.
  */
 function capturedColumns_() {
   return {
@@ -30,6 +36,7 @@ function capturedColumns_() {
       ['url', 'url'],
       ['notesPrivate', 'notes'],
       ['status', 'status', CONFIG.values.venueStatus.active],
+      ['cityOnly', 'cityOnly', null, 'boolean'],
     ],
     organisers: [
       ['social', 'social'],
@@ -128,6 +135,12 @@ function detailsFunction_(ss, tabKey, name) {
           const value = row[columnIndex_(tabKey, column[0])];
           if (value === '' || value === null) return null;
           if (column.length > 2 && String(value).trim() === column[2]) return null;
+          // A boolean column writes the boolean or nothing, never `quote_`'s string: `true` is the
+          // only cell the sheet reads as a tick, and the unticked state is every other row's, so
+          // writing it down would bury the one venue that carries the flag.
+          if (column.length > 3 && column[3] === 'boolean') {
+            return value === true ? `${column[1]}: true` : null;
+          }
           return `${column[1]}: ${quote_(value)}`;
         })
         .filter(field => field !== null);

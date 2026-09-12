@@ -28,7 +28,7 @@ const src = loadProject('src');
 
 /** Helpers that appear in both projects and are expected to. */
 const EXPECTED_SHARED = [
-  'argSeparator_', 'cityOnlyMarker_', 'colLookup_', 'colRange_', 'columnIndex_', 'columnLetter_',
+  'argSeparator_', 'cityOnlyVenue_', 'colLookup_', 'colRange_', 'columnIndex_', 'columnLetter_',
   'columnSpec_', 'countFilled_', 'headers_', 'localizeFormula_', 'lookupKey_', 'notify_',
   'quoteLiteral_', 'setFormula_', 'tabRef_',
 ];
@@ -239,23 +239,16 @@ test('lookupKey_ folds a name the same way', () => {
   }
 });
 
-test('cityOnlyMarker_ matches the same notes, including the empty list that must match nothing', () => {
-  // One vocabulary, two projects: the bound project decides whether a venue is nagged for an address
-  // and the scaffolding reports which rows its conditional formats will paint. A marker list that
-  // means different things on the two sides is the two halves of one rule disagreeing.
-  const notes = ['house show at ours', 'city only, ask the organiser', 'a warehouse in the docks',
-    'HOUSE SHOW', '', 'the private address is with Jo'];
-  for (const markers of [boot.CONFIG.privacy.cityOnlyMarkers, [], ['the "barn"'], ['house show']]) {
-    const savedBoot = boot.CONFIG.privacy.cityOnlyMarkers;
-    const savedSrc = src.CONFIG.privacy.cityOnlyMarkers;
-    boot.CONFIG.privacy.cityOnlyMarkers = markers;
-    src.CONFIG.privacy.cityOnlyMarkers = markers;
-    try {
-      sameAnswer('cityOnlyMarker_', p => notes.map(note => p.cityOnlyMarker_().test(note)));
-    } finally {
-      boot.CONFIG.privacy.cityOnlyMarkers = savedBoot;
-      src.CONFIG.privacy.cityOnlyMarkers = savedSrc;
-    }
+test('cityOnlyVenue_ reads a City only? cell the same way in both projects', () => {
+  // One flag, two projects: the bound project decides whether a venue is nagged for an address and
+  // whether a street number on it is a breach, the scaffolding reports which rows its conditional
+  // formats will paint. A cell that means different things on the two sides is the two halves of one
+  // rule disagreeing.
+  //
+  // The text values are the ones that reach a cell by being pasted or imported over the box. Only a
+  // boolean is a tick, and both sides have to say so — see `city-only-flag.test.js`.
+  for (const value of [true, false, 'TRUE', 'true', 'FALSE', 'yes', 1, 0, '', null, undefined]) {
+    sameAnswer('cityOnlyVenue_', p => p.cityOnlyVenue_(value));
   }
 });
 
@@ -267,7 +260,7 @@ test('the helpers that cannot be compared by behaviour are the ones on record', 
   // which for notify_ means nothing at all: it is exempted. Stated here so the gap is visible
   // rather than assumed covered.
   const behaviourallyChecked = [
-    'cityOnlyMarker_', 'colLookup_', 'colRange_', 'columnIndex_', 'columnLetter_', 'columnSpec_',
+    'cityOnlyVenue_', 'colLookup_', 'colRange_', 'columnIndex_', 'columnLetter_', 'columnSpec_',
     'countFilled_', 'headers_', 'localizeFormula_', 'lookupKey_', 'quoteLiteral_', 'setFormula_',
     'tabRef_',
   ];

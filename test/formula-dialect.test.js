@@ -112,83 +112,21 @@ function stringsAreClosed(formula) {
   return !inString;
 }
 
-test('a marker or venue name containing a quote still builds a valid rule', () => {
-  // The offline formula check cannot catch this on its own: doubling a quote leaves the *count*
-  // even, so an unescaped `the "barn"` passes it and fails only in the sheet.
-  const savedMarkers = boot.CONFIG.privacy.cityOnlyMarkers;
-  const savedVenues = boot.CONFIG.privacy.addresslessByDesign;
-  boot.CONFIG.privacy.cityOnlyMarkers = ['house show', 'the "barn"'];
-  boot.CONFIG.privacy.addresslessByDesign = ['Cafe "De Hoek"'];
-  try {
-    const rule = boot.venueAddresslessByDesign_();
-    assert.ok(stringsAreClosed(rule), `a string is left open: ${rule}`);
-    assert.ok(rule.includes('""barn""'), 'the quote in the marker was not escaped');
-    assert.ok(rule.includes('""De Hoek""'), 'the quote in the venue name was not escaped');
-  } finally {
-    boot.CONFIG.privacy.cityOnlyMarkers = savedMarkers;
-    boot.CONFIG.privacy.addresslessByDesign = savedVenues;
-  }
-});
-
-/** The `Venue without an address` block, which spells the same two lists as a `FILTER`. */
+/** The `Venue without an address` block, the sheet's own half of the completeness rules. */
 function addressCheck() {
   const block = boot.checkBlocks_().find(entry => entry[1] === 'Venue without an address');
-  assert.ok(block, 'the address check is no longer called that — the fixture, not the code');
+  assert.ok(block,
+    'no check block is labelled "Venue without an address" — fix the fixture, not the code');
   return block[2];
 }
 
-test('the address check escapes a quote in a marker or a venue name too', () => {
-  // The third spelling of these two lists, and the one the offline check is blindest to: it lives
-  // inside a `FILTER`, so an unescaped quote parses into a different argument list rather than
-  // failing outright, and the block goes on printing something.
-  const savedMarkers = boot.CONFIG.privacy.cityOnlyMarkers;
-  const savedVenues = boot.CONFIG.privacy.addresslessByDesign;
-  boot.CONFIG.privacy.cityOnlyMarkers = ['house show', 'the "barn"'];
-  boot.CONFIG.privacy.addresslessByDesign = ['Cafe "De Hoek"'];
-  try {
-    const check = addressCheck();
-    assert.ok(stringsAreClosed(check), `a string is left open: ${check}`);
-    assert.ok(check.includes('""barn""'), 'the quote in the marker was not escaped');
-    assert.ok(check.includes('""De Hoek""'), 'the quote in the venue name was not escaped');
-  } finally {
-    boot.CONFIG.privacy.cityOnlyMarkers = savedMarkers;
-    boot.CONFIG.privacy.addresslessByDesign = savedVenues;
-  }
-});
-
-test('the address check and the conditional format rule quote a list the same way', () => {
-  // One vocabulary, and the sheet has to be told it identically twice. Asserted against a name that
-  // needs escaping, since identical handling of a plain name proves nothing.
-  const saved = boot.CONFIG.privacy.addresslessByDesign;
-  boot.CONFIG.privacy.addresslessByDesign = ["Cafe 'tis \"Here\""];
-  try {
-    const quoted = boot.quoteLiteral_(boot.CONFIG.privacy.addresslessByDesign[0]);
-    assert.ok(addressCheck().includes(quoted), 'the check spelled the venue name its own way');
-    assert.ok(boot.venueAddresslessByDesign_().includes(quoted),
-      'the conditional format rule spelled the venue name its own way');
-  } finally {
-    boot.CONFIG.privacy.addresslessByDesign = saved;
-  }
-});
-
 test('the shipped config builds an address check whose strings all close', () => {
+  // The offline check counts quotes and would pass an interpolation that merely happens to leave the
+  // count even, so the one value these rules interpolate, the venue status, is walked here instead.
   assert.ok(stringsAreClosed(addressCheck()));
 });
 
-test('an empty marker list falls back to FALSE rather than an empty OR', () => {
-  const saved = boot.CONFIG.privacy.cityOnlyMarkers;
-  const savedVenues = boot.CONFIG.privacy.addresslessByDesign;
-  boot.CONFIG.privacy.cityOnlyMarkers = [];
-  boot.CONFIG.privacy.addresslessByDesign = [];
-  try {
-    assert.strictEqual(boot.venueAddresslessByDesign_(), 'FALSE');
-  } finally {
-    boot.CONFIG.privacy.cityOnlyMarkers = saved;
-    boot.CONFIG.privacy.addresslessByDesign = savedVenues;
-  }
-});
-
-test('the shipped config builds a rule whose strings all close', () => {
-  assert.ok(stringsAreClosed(boot.venueAddresslessByDesign_()));
+test('the shipped config builds venue rules whose strings all close', () => {
+  assert.ok(stringsAreClosed(boot.venueCityOnly_()));
   assert.ok(stringsAreClosed(boot.venueIncomplete_()));
 });

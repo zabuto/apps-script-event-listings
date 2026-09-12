@@ -170,25 +170,20 @@ function lookupKey_(value) {
 /* ═════════════════════════════════════════════════════════════════════════════ the data check ═══ */
 
 /**
- * The marker that says "this venue carries a city and nothing more".
+ * Whether a venue's `City only?` cell says *this venue carries a city and nothing more* — never
+ * nagged for a missing address, and never allowed to carry a street number.
  *
- * Whole phrases only, from `CONFIG.privacy.cityOnlyMarkers`, and the same list drives both of its
- * consequences — never nagged for an address, never allowed to carry a street number — so the two
- * cannot disagree. See the note on that setting for why substrings are not an option.
+ * One cell, both consequences, and three readers held to this one answer: `venueCityOnly_` for the
+ * conditional format, the `Venue without an address` check for the sheet's own worklist, and
+ * `checkData` in the bound project.
+ *
+ * Strictly `true`, because the column is a checkbox and a ticked box is the boolean. Text that
+ * merely spells it — `TRUE` pasted over the box, `yes`, `ja` — is not ticked, and the sheet's own
+ * `=TRUE` comparison reads it as unticked too. Anything looser would have the script exempting a
+ * venue the sheet still nags about.
  */
-function cityOnlyMarker_() {
-  const phrases = CONFIG.privacy.cityOnlyMarkers
-    .map(phrase => phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-
-  // An empty list must match *nothing*, and `new RegExp('')` matches *everything* — the exact
-  // inversion, from a setting an installer is free to clear. Every venue would read as city-only:
-  // the missing-address nag goes quiet altogether, and every address carrying a street number is
-  // reported as a privacy breach, telling maintainers to delete correct data before the next map
-  // refresh. `(?!)` can never match. `venueAddresslessByDesign_` falls back to FALSE for the same
-  // reason, and the two spellings of this list have to agree: one vocabulary, both consequences.
-  if (!phrases.length) return /(?!)/;
-
-  return new RegExp(phrases.join('|'), 'i');
+function cityOnlyVenue_(value) {
+  return value === true;
 }
 
 /**
@@ -199,7 +194,7 @@ function cityOnlyMarker_() {
  * every run teaches maintainers to close the dialog unread:
  *
  *   · a concept or cancelled event with no date. A missing date only matters once it is confirmed.
- *   · a venue with no address whose notes mark it city-only. The marker lives in the sheet rather
+ *   · a venue with no address whose `City only?` box is ticked. The flag lives in the sheet rather
  *     than in a list in here, so the script and the sheet's own checks cannot hold two copies of it
  *     and drift apart.
  *   · a concept event with no venue. Dates go out before rooms are booked, and the event still
@@ -265,27 +260,30 @@ function checkData() {
     }
   });
 
-  const cityOnly = cityOnlyMarker_();
-  // The sheet's own addressless-by-design rule is `$A2="…"`, which ignores case like every other
-  // venue-name comparison — see `lookupKey_`.
-  const addresslessByName = new Set(CONFIG.privacy.addresslessByDesign.map(lookupKey_));
   venues.rows.forEach((row, i) => {
     const at = `${CONFIG.tabs.venues} row ${i + 2}`;
     const name = venues.text(row, 'name');
     if (!name) return;
 
     const address = venues.text(row, 'address');
-    const byDesign = cityOnly.test(String(venues.get(row, 'notesPrivate'))) ||
-      addresslessByName.has(lookupKey_(name));
+    const postcode = venues.text(row, 'postcode');
+    const cityOnly = cityOnlyVenue_(venues.get(row, 'cityOnly'));
 
-    if (!address && !byDesign && venues.get(row, 'status') !== CONFIG.values.venueStatus.closed) {
+    if (!address && !cityOnly && venues.get(row, 'status') !== CONFIG.values.venueStatus.closed) {
       problems.push(`${at}: "${name}" has no address`);
     }
     // A city-only venue carries the city and nothing else. A street number on one is the shape a
     // privacy breach takes here, and it goes public the moment the map is re-imported.
-    if (byDesign && /\d/.test(address)) {
+    if (cityOnly && /\d/.test(address)) {
       problems.push(`${at}: "${name}" is marked city-only but its address has a street number — ` +
                     'remove it before the next map refresh');
+    }
+    // The postcode is the same leak by another column: the geocoded line is `address, postcode city`,
+    // so a postcode left in place publishes one side of one block as soon as the address column holds
+    // anything at all — a place name included, which is what a city-only venue is meant to carry.
+    if (cityOnly && postcode) {
+      problems.push(`${at}: "${name}" is marked city-only but has a postcode, which the map ` +
+                    'publishes beside the address — remove it before the next map refresh');
     }
   });
 
@@ -566,10 +564,11 @@ function setFormula_(range, formula, separator) {
 /**
  * A value as a formula string literal: wrapped in quotes, with any quote inside it doubled.
  *
- * Sheets escapes a quote by doubling it. Interpolating a config value raw closes the string early —
- * a marker `the "barn"` builds `SEARCH("the "barn"", …)` — and the offline check cannot see it,
- * because doubling a quote leaves the *count* even. It surfaces in the cell, as a parse error or as
- * a formula that quietly parses into something else.
+ * Sheets escapes a quote by doubling it. Interpolating a config value raw closes the string early: a
+ * `dateTba` reading `date "to be announced"` lands in the `When` column as
+ * `IF(A2="","date "to be announced"",…)`, four quotes that pair up wrongly. The offline check cannot
+ * see it either, because doubling a quote leaves the *count* even. It surfaces in the cell, as a
+ * parse error or as a formula that quietly parses into something else.
  *
  * **Every `Config.gs` value that reaches a formula goes through here** — the statuses, the scope
  * words, the day and month names, the unknown-venue marker, the map's title and country suffixes,

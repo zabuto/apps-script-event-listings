@@ -6,8 +6,9 @@
  * upcoming event booked into a venue that has closed.
  *
  * `setupAll` runs this as step 3, and `setupChecks` is also the one to run on its own after any
- * change to a column contract: it writes the formulas, reports what each one resolves to, and
- * touches no data, so it is safe on a sheet in use.
+ * change to a column contract: it writes the formulas, reports what each one resolves to and what
+ * the sheet makes of the boolean the address check turns on, and touches no data, so it is safe on
+ * a sheet in use.
  *
  * It installs the checks; it does not judge the data. The formulas re-evaluate themselves on every
  * edit, so the sheet is always answering — running this only rewrites the question. The bound
@@ -44,25 +45,20 @@ function checkBlocks_() {
         `ISNA(MATCH(${colRange_('events', 'organiser')},${colFull_('organisers', 'name')},0))),${clean})`,
     ],
 
-    // Closed venues and the deliberately addressless ones are excluded for the same reason: the
-    // sheet has already decided about them, and a check that reports a settled decision on every run
-    // teaches maintainers to skip the block.
+    // Closed venues and city-only ones are excluded for the same reason: the sheet has already
+    // decided about them, and a check that reports a settled decision on every run teaches
+    // maintainers to skip the block.
     [
       'T',
       'Venue without an address',
       `=IFERROR(FILTER(${colRange_('venues', 'name')}, ${colRange_('venues', 'name')}<>"", ` +
         `${colRange_('venues', 'address')}="", ` +
-        `${colRange_('venues', 'status')}<>${quoteLiteral_(values.venueStatus.closed)}` +
-        // Both lists are typed by a person, so both go through `quoteLiteral_` — see the note on
-        // `venueAddresslessByDesign_`, which spells the same two lists for the conditional formats.
-        CONFIG.privacy.cityOnlyMarkers
-          .map(marker =>
-            `, ISERROR(SEARCH(${quoteLiteral_(marker)},${colRange_('venues', 'notesPrivate')}))`)
-          .join('') +
-        CONFIG.privacy.addresslessByDesign
-          .map(venue => `, ${colRange_('venues', 'name')}<>${quoteLiteral_(venue)}`)
-          .join('') +
-        `),${clean})`,
+        `${colRange_('venues', 'status')}<>${quoteLiteral_(values.venueStatus.closed)}, ` +
+        // `<>TRUE` rather than `NOT(…)`: a comparison broadcasts down the column inside `FILTER`,
+        // where a scalar function can collapse to one value and answer for every row at once. A
+        // blank box is not `TRUE`, so an untouched venue stays on the worklist — see the note on
+        // `venueCityOnly_`, which is the conditional format's half of the same test.
+        `${colRange_('venues', 'cityOnly')}<>TRUE),${clean})`,
     ],
 
     [
@@ -114,9 +110,14 @@ function setupChecks() {
   log_ = [];
   const ss = openSpreadsheet_();
   const lists = sheetFor_(ss, 'lists');
-  writeChecks_(lists, argSeparator_(ss));
+  const separator = argSeparator_(ss);
+  writeChecks_(lists, separator);
   SpreadsheetApp.flush();
   reportChecks_(lists);
+  // The address check exempts on `=TRUE` from inside an `IFERROR`, which turns a literal the sheet
+  // cannot parse into the clean marker rather than an error. Read back, that block then says the
+  // sheet is finished, for good. This is the one reading that would disagree.
+  reportCityOnlyFlag_(ss, separator);
   const summary = log_.join('\n');
   notify_('Checks ready', summary);
   return summary;

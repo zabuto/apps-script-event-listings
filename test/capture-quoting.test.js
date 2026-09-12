@@ -17,7 +17,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const { loadProject } = require('./helpers/project');
-const { formatDate } = require('./helpers/fakes');
+const { installFakes, fakeSpreadsheet, rowFor, formatDate } = require('./helpers/fakes');
 
 const boot = loadProject('bootstrap');
 
@@ -130,4 +130,39 @@ test('every seeded value already in the repo round-trips, so the shipped seed st
 
   assert.ok(values.length, 'no seeded strings were collected, so this proves nothing');
   for (const value of values) assert.strictEqual(roundTrip(value), value.trim());
+});
+
+/* ── a boolean column, captured as one ──────────────────────────────────────────────────────── */
+
+/** `seedVenueDetails_` as `captureSheetData` would rewrite it for a one-venue sheet. */
+function captureVenue(values) {
+  const config = boot.CONFIG;
+  const ss = fakeSpreadsheet(config, {
+    tabs: { venues: [rowFor(config, 'venues', Object.assign({ name: 'A Living Room' }, values))] },
+  });
+  const restore = installFakes({ spreadsheet: ss });
+  try {
+    return boot.detailsFunction_(ss, 'venues', 'seedVenueDetails_');
+  } finally {
+    restore();
+  }
+}
+
+test('a ticked box is captured as a boolean, not as a quoted string', () => {
+  // `seedSheet` reads this file back through `cityOnlyVenue_`, which is strict: `'true'` under this
+  // key writes an unticked box on the next build while reading, on the page, like a ticked one.
+  const captured = captureVenue({ cityOnly: true });
+  assert.match(captured, /cityOnly: true\b/);
+  assert.strictEqual(/cityOnly: ['"]/.test(captured), false,
+    `the flag was quoted, so the seed will read it as unticked: ${captured}`);
+});
+
+test('nothing but a tick is written down for a boolean column', () => {
+  // An unticked box is every other venue's state, and text in the cell is not a decision the sheet
+  // reads — writing either one down would put a value in the seed that the seed cannot act on.
+  for (const cell of [false, 'TRUE', 'yes', 1]) {
+    const captured = captureVenue({ cityOnly: cell, address: 'Kade 1' });
+    assert.strictEqual(captured.includes('cityOnly'), false,
+      `${JSON.stringify(cell)} was captured as a value for the flag: ${captured}`);
+  }
 });

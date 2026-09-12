@@ -278,8 +278,10 @@ function writeReadMe_(ss) {
       '',
     ],
     [
-      'A venue can carry a city and no street address on purpose — mark it in its private notes and ' +
-        'the checks leave it alone. The map then puts its pin on the city.',
+      `A venue can carry a city and no street address on purpose — tick ` +
+        `${headerOf_('venues', 'cityOnly')} in ${tabs.venues} and the checks leave it alone. The ` +
+        'map then puts its pin on the city. Type a street number into a row with that box ticked ' +
+        'and the check says so: it would go public at the next map refresh.',
       '',
     ],
     ['', ''],

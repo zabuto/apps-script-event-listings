@@ -104,6 +104,13 @@ when it happens, and is where that reasoning belongs.
     V8 JS, private helpers end with `_`, and comments explain *why*, especially where a simpler-looking version silently
     fails.
 
+    **No narrative**, in every kind of text that ships: a comment, a docblock, a test name, an assertion message, a
+    line a run reports, and prose in `README.md` and `docs/`. Write what holds today and what breaks when it stops;
+    what changed and why is the commit's job. A word pointing at a previous *state of the repo* is the easy one to
+    miss — "again", "back", "still", "no longer", "now" are worth a second look, though each is fine about the running
+    system, as in `run setupAll again` or `an id that no longer resolves`. Nearby narrative is not a licence to add
+    more: rewriting a block that carries some is the moment to fix it, and the rest stays as it is.
+
 ## Do / Don't
 
 - **Do** read `docs/gotchas.md` before changing a formula, a validation rule, or a protection.
