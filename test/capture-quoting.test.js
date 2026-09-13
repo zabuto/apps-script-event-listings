@@ -17,7 +17,8 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const { loadProject } = require('./helpers/project');
-const { installFakes, fakeSpreadsheet, rowFor, formatDate } = require('./helpers/fakes');
+const { installFakes, fakeSpreadsheet, rowFor, formatDate, FIXTURE_ZONE } =
+  require('./helpers/fakes');
 
 const boot = loadProject('bootstrap');
 
@@ -109,7 +110,7 @@ test('a number is written as a string, because that is what the seed reads back'
 /* ── the same guarantee where it actually lands ─────────────────────────────────────────────── */
 
 test('a captured date is a literal too, and anything that is not a date is an empty one', () => {
-  const tz = 'Europe/Amsterdam';
+  const tz = FIXTURE_ZONE;
   withUtilities(() => {
     assert.strictEqual(evaluate(boot.isoOrBlank_(new Date('2026-08-12T10:00:00Z'), tz)),
       '2026-08-12');
