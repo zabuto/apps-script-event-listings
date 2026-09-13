@@ -59,9 +59,10 @@ across, not by renaming headers.
 
 ## Checking that it is sound — installer
 
-Run `reportState` in the scaffolding project. It reads everything: contracts, volumes, what each computed column
-resolves to, every hygiene check, the dashboard, and the protections. It leaves the sheet as it found it — the one thing
-it writes is a throwaway `_state_probe` tab, because some of those answers exist only once a formula has been evaluated,
+Run `reportState` in the scaffolding project. It reads the sheet: contracts, volumes, what each computed column
+resolves to, every hygiene check, the dashboard, and the protections. File ids are not in it — those are Script
+Properties, listed in [`configuration.md`](configuration.md). It leaves the sheet as it found it — the one thing it
+writes is a throwaway `_state_probe` tab, because some of those answers exist only once a formula has been evaluated,
 and it deletes it again in a `finally`.
 
 Three things it cannot check, because no script can see them:
@@ -112,8 +113,8 @@ The spreadsheet, the bound script, and the agenda document travel together — t
 and the document keeps its id, so every published link keeps working. What does *not* travel:
 
 - **Triggers.** The new owner installs their own; the old owner deletes theirs.
-- **The map.** My Maps has no ownership transfer, so it gets rebuilt on the new account and `CONFIG.mapUrl` becomes a
-  one-line edit.
+- **The map.** My Maps has no ownership transfer, so it gets rebuilt on the new account and `MAP_ID` is re-pointed at
+  the rebuilt one.
 - **Personal folders.** The PDF archive folder is one of these — re-point `PDF_FOLDER_ID` or drop it.
 - **The scaffolding project.** It stays with you. Nothing in the running system needs it, but it is the only scripted
   path back from an empty spreadsheet, so do not delete it until you are sure.

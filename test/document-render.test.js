@@ -311,61 +311,92 @@ test('an empty listing says so instead of leaving the heading bare', () => {
 /* ── the map URL ───────────────────────────────────────────────────────────────────────────── */
 
 /*
- * `CONFIG.mapUrl` is empty in the shipped config, so the two places that print it need a fixture
- * that sets one. Both states matter: with a URL the line carries it, without one the line must not
- * end in a dangling ` · `.
+ * The map id is an installer setting in Script Properties, so the two places that print it need a
+ * fixture that sets one. Both states matter: with an id the line carries the composed URL, without
+ * one it must not end in a dangling ` · `.
  */
 
-const MAP_URL = 'https://www.google.com/maps/d/view?mid=1FakeMapIdForTests';
+const MAP_ID = '1FakeMapIdForTests';
+const MAP_URL = `${CONFIG.mapViewBaseUrl}${MAP_ID}`;
 
-/** Runs `render` with a configured map URL, and puts the config back. */
-function withMapUrl(url, render) {
-  const saved = CONFIG.mapUrl;
-  CONFIG.mapUrl = url;
-  try {
-    return render();
-  } finally {
-    CONFIG.mapUrl = saved;
-  }
+/** The Script Properties of a project whose map id is set. */
+function withMapId(mapId) {
+  return { properties: { [CONFIG.properties.mapId]: mapId } };
 }
 
-test('the meta line ends with the map URL when one is configured', () => {
-  const texts = withMapUrl(MAP_URL,
-    () => textsOf(onABody(body => src.titleBlock_(body, [listed({})]))));
+test('the meta line ends with the map URL when a map id is set', () => {
+  const texts = textsOf(onABody(body => src.titleBlock_(body, [listed({})]), withMapId(MAP_ID)));
   assert.match(texts[2], /^1 events · updated /);
   assert.ok(texts[2].endsWith(` · ${MAP_URL}`),
     `the map URL is not on the meta line: "${texts[2]}"`);
 });
 
-test('the meta line has no dangling separator when no map URL is configured', () => {
+test('the meta line has no dangling separator when no map id is set', () => {
   // Anchored at the end rather than searching for " · ": the line's own separator between the
-  // count and the date is meant to be there. `withMapUrl('')` rather than trusting the shipped
-  // config, since `mapUrl` is an installer setting and either state must pass.
-  const texts = withMapUrl('',
-    () => textsOf(onABody(body => src.titleBlock_(body, [listed({})]))));
+  // count and the date is meant to be there.
+  const texts = textsOf(onABody(body => src.titleBlock_(body, [listed({})])));
   assert.match(texts[2], /^1 events · updated \d{1,2} [A-Za-z]+ \d{4}$/,
     `the meta line is not exactly "N events · updated <date>": "${texts[2]}"`);
 });
 
-test('the footer credit ends with the map URL when one is configured', () => {
+test('the footer credit ends with the map URL when a map id is set', () => {
   // The footer is what carries the map onto a print-out that has left the building, which is the
   // whole reason the URL is repeated there.
   const doc = fakeDocument({ id: DOC_ID });
-  const restore = installFakes({ document: doc });
+  const restore = installFakes({ document: doc, ...withMapId(MAP_ID) });
   try {
-    withMapUrl(MAP_URL, () => src.ensureFooter_(doc));
+    src.ensureFooter_(doc);
   } finally {
     restore();
   }
   assert.strictEqual(doc.model.footer.children[0].text, `${CONFIG.brand.name} · ${MAP_URL}`);
 });
 
-test('a configured map URL reaches the rendered document, in both places', () => {
+test('a set map id reaches the rendered document as a URL, in both places', () => {
   // End to end, on the text a reader receives rather than on one renderer's arguments.
-  const { model } = withMapUrl(MAP_URL, () => rebuild({ events: THREE_EVENTS }));
+  const { model } = rebuild({ properties: { [CONFIG.properties.mapId]: MAP_ID },
+    events: THREE_EVENTS });
   const printed = documentText(model).split('\n').filter(line => line.includes(MAP_URL));
   assert.strictEqual(printed.length, 2,
     `the map URL should appear on the meta line and in the footer, found ${printed.length}`);
+});
+
+test('a map id that is absent, empty or blank omits the line rather than composing a URL', () => {
+  // Three states a person leaves the property in, all meaning the same thing: never added, set to
+  // nothing, and typed as whitespace. Truthiness alone passes the last one on as a live link to
+  // nothing.
+  for (const [state, mapId] of [['absent', null], ['empty', ''], ['blank', '   ']]) {
+    const restore = installFakes(mapId === null ? {} : withMapId(mapId));
+    try {
+      assert.strictEqual(src.mapUrl_(), '', `the ${state} map id composed a URL`);
+    } finally {
+      restore();
+    }
+  }
+});
+
+test('the composed map URL is the view form, never edit', () => {
+  // The URL reaches every reader and every downloaded PDF, so an edit address hands them the map's
+  // editor. Storing the id alone is what puts that shape out of reach.
+  const restore = installFakes(withMapId(MAP_ID));
+  try {
+    assert.strictEqual(src.mapUrl_(), `https://www.google.com/maps/d/view?mid=${MAP_ID}`);
+  } finally {
+    restore();
+  }
+});
+
+test('a whole URL pasted into the map id property cannot compose into a working link', () => {
+  // The mistake to expect: an installer pastes what the browser gave them, edit address and all.
+  const restore = installFakes(withMapId('https://www.google.com/maps/d/edit?mid=1AbC'));
+  try {
+    const url = src.mapUrl_();
+    assert.strictEqual(url.includes('/edit'), false, `an edit address was published: "${url}"`);
+    assert.ok(url.startsWith(CONFIG.mapViewBaseUrl),
+      `the composed URL does not keep the view form: "${url}"`);
+  } finally {
+    restore();
+  }
 });
 
 test('no logo is configured, so none is appended and nothing fails', () => {
@@ -413,12 +444,12 @@ test('a document with no footer gets the credit line', () => {
   // Download and *Make a copy* stay on, so the footer is what carries the name onto a print-out
   // that has left the building.
   //
-  // Pinned to an empty `mapUrl`: the brand name alone is the whole credit line only while that
-  // setting is unset.
+  // Pinned to an unset map id: the brand name alone is the whole credit line only while that
+  // setting is empty.
   const doc = fakeDocument({ id: DOC_ID });
   const restore = installFakes({ document: doc });
   try {
-    withMapUrl('', () => src.ensureFooter_(doc));
+    src.ensureFooter_(doc);
   } finally {
     restore();
   }

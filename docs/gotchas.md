@@ -202,7 +202,8 @@ the thing a rule happens to be looking at when somebody extends it into an outpu
 **A city-only venue with a street number is the shape a leak takes.** It goes public at the next map refresh, so
 `checkData` reports it as an issue rather than a note.
 
-**The document's meta line and footer carry the map URL into every downloaded PDF.** An `/edit` URL is not a link to the
-map, it is an invitation to edit it — which is why `CONFIG.mapUrl` asks for the `/view` form. Drop the `&ll=…&z=…` a
-browser leaves on it too: that is the viewport somebody happened to be looking at, and it goes stale the next time
-anyone pans the map.
+**The document's meta line and footer carry the map address into every downloaded PDF.** An `/edit` URL is not a link
+to the map, it is an invitation to edit it. That is why the `MAP_ID` property holds the `mid` alone and the code
+composes the `/view` address around it: the wrong shape has nowhere to enter from. It also leaves the `&ll=…&z=…` tail
+a browser adds no way in — that is the viewport somebody happened to be looking at, frozen into a document that is
+rebuilt weekly.

@@ -628,6 +628,18 @@ function optionalId_(propertyKey) {
   return PropertiesService.getScriptProperties().getProperty(propertyKey) || '';
 }
 
+/**
+ * The published map's address, composed from the id in Script Properties. No id returns ''.
+ *
+ * The property holds the `mid` alone, so `CONFIG.mapViewBaseUrl` fixes the one shape a reader can be
+ * handed; escaping it turns a pasted URL into a visibly broken link rather than a working `/edit` one.
+ * Trimming is what makes a blank-looking value no id at all, rather than a live link to nothing.
+ */
+function mapUrl_() {
+  const mapId = optionalId_(CONFIG.properties.mapId).trim();
+  return mapId ? CONFIG.mapViewBaseUrl + encodeURIComponent(mapId) : '';
+}
+
 /** Rebuilds the read-only document: every upcoming event, oldest first. */
 function generateEventsDoc() {
   const events = upcomingEvents_();
@@ -833,8 +845,9 @@ function titleBlock_(body, events) {
   }
 
   const stamp = Utilities.formatDate(new Date(), tz, 'd MMMM yyyy');
+  const mapUrl = mapUrl_();
   const meta = body.appendParagraph(`${events.length} events · updated ${stamp}` +
-    (CONFIG.mapUrl ? ` · ${CONFIG.mapUrl}` : ''));
+    (mapUrl ? ` · ${mapUrl}` : ''));
   meta.editAsText().setFontFamily(font).setFontSize(10).setForegroundColor(palette.muted);
   meta.setSpacingAfter(10);
 
@@ -932,8 +945,9 @@ function rule_(body, color, thickness) {
  */
 function ensureFooter_(doc) {
   if (doc.getFooter()) return;
+  const mapUrl = mapUrl_();
   const paragraph = doc.addFooter().appendParagraph(
-    CONFIG.brand.name + (CONFIG.mapUrl ? ' · ' + CONFIG.mapUrl : ''));
+    CONFIG.brand.name + (mapUrl ? ' · ' + mapUrl : ''));
   paragraph.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
   paragraph.editAsText().setFontFamily(CONFIG.style.font).setFontSize(8)
     .setForegroundColor(CONFIG.style.palette.muted);
@@ -1007,12 +1021,14 @@ function showConfiguration() {
   const properties = PropertiesService.getScriptProperties();
   const lines = ['=== configuration ==='];
   lines.push(`Brand: ${CONFIG.brand.name} · menu "${CONFIG.brand.menu}" · zone ${CONFIG.timeZone}`);
-  lines.push(`Map URL: ${CONFIG.mapUrl || '(not set — the document omits the line)'}`);
+  lines.push(`Map URL: ${mapUrl_() || '(no map id — the document omits the line)'}`);
   lines.push(`Document sharing: ${CONFIG.doc.sharing === 'anyoneWithLink'
     ? 'every rebuild re-asserts anyone-with-the-link, view only'
     : 'never touched by this code — whatever you set in Drive stands'}`);
 
-  Object.keys(CONFIG.properties).forEach(key => {
+  // Every other property holds a Drive id, reported by what it resolves to. My Maps has no API, so
+  // the map id is not resolvable from here.
+  Object.keys(CONFIG.properties).filter(key => key !== 'mapId').forEach(key => {
     const name = CONFIG.properties[key];
     const value = properties.getProperty(name);
     if (!value) { lines.push(`${name}: (not set)`); return; }

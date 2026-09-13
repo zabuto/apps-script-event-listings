@@ -4,9 +4,9 @@
  * Two jobs, and they are the same job:
  *
  *   1. A new install has something to look at. Every branch the code has is exercised by a row in
- *      here: a multi-day run, a city-only venue with no street address, a venue with no postcode, a
- *      closed venue with a past event, a cancelled event, a concept event with no venue yet, and one
- *      with no date at all.
+ *      here: a multi-day run, a venue holding two upcoming events, a city-only venue with no street
+ *      address, a venue with no postcode, a closed venue with a past event, a cancelled event, a
+ *      concept event with no venue yet, and one with no date at all.
  *   2. Once it is *your* data, this file is where it survives a rebuild. `captureSheetData` reads the
  *      live sheet and prints these three functions back out, ready to paste over the ones here.
  *
@@ -89,7 +89,7 @@ function seedVenues_() {
     ['Zaantheater', 'Zaandam', ''],
     // Invented, and deliberately so: a venue that carries a city and nothing more. What makes it
     // one is the ticked `City only?` box in `seedVenueDetails_`, not this note.
-    ['Living Room Sessions', 'Amsterdam', 'House show — ask the organiser'],
+      ['Living Room Sessions', 'Amsterdam', 'House show — ask the organiser'],
     // Invented as well. Its only event is in the past, so a closed venue never reaches the map.
     ['Zaal Zeeburg', 'Amsterdam', 'Closed, kept for its history'],
   ];
@@ -194,6 +194,12 @@ function seedEvents_() {
     // because street plus city is enough for the geocoder.
     [inDays_(28), '', 'Autumn Revue', 'Koninklijk Theater Carré', 'Bluebird Revue', status.confirmed, ''],
     [inDays_(35), '', 'Late Show', 'Beurs van Berlage', 'Aurora Collective', status.confirmed, ''],
+
+    // Two venues carrying two upcoming events each. The export writes a row per event, so both pins
+    // share one coordinate and the layer panel tells them apart by title; the document lists them as
+    // two lines in date order, never grouped under their venue.
+    [inDays_(16), '', 'Youth Matinee', 'Zaantheater', 'Northside Youth Theatre', status.confirmed, ''],
+    [inDays_(24), '', 'Makers Market', 'Beurs van Berlage', 'Studio Zuid', status.confirmed, ''],
 
     // ── the edges
     // Cancelled: struck through, counted nowhere, and visible only where everything is visible.
