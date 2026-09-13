@@ -18,6 +18,9 @@ const { documentApp } = require('./document');
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'];
 
+/** The zone a fixture sits in when it has no reason to care — matching `CONFIG.timeZone` is chance. */
+const FIXTURE_ZONE = 'Europe/Amsterdam';
+
 /** The calendar parts of an instant, as seen from a named zone. */
 function partsIn(zone, date) {
   const formatter = new Intl.DateTimeFormat('en-US', {
@@ -302,9 +305,12 @@ function fakeSheet(name, headers, rows,
  * `CONFIG.mapExport.headers`, written by `refreshMapExport`. Anywhere else a spelled header row is
  * a copy of the contract, and the copy is what goes stale.
  *
+ * `timeZone` defaults to `FIXTURE_ZONE`. A test whose answer depends on the zone names its own; one
+ * that must agree with the shipped config passes `CONFIG.timeZone`.
+ *
  * `lastRow`, `maxColumns` and `spill` pass through to `fakeSheet`.
  */
-function fakeSpreadsheet(config, { timeZone = 'Europe/Amsterdam', tabs = {} } = {}) {
+function fakeSpreadsheet(config, { timeZone = FIXTURE_ZONE, tabs = {} } = {}) {
   const sheets = {};
   for (const [tabKey, given] of Object.entries(tabs)) {
     const name = config.tabs[tabKey];
@@ -605,5 +611,5 @@ function installFakes({
 
 module.exports = {
   installFakes, fakeSpreadsheet, fakeSheet, fakeDrive, fakeFolder, fakeUi, frozenDate, rowFor,
-  formatDate, midnightIn, partsIn,
+  formatDate, midnightIn, partsIn, FIXTURE_ZONE,
 };

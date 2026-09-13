@@ -105,13 +105,21 @@ to catch invisible.
 
 ```js
 const {installFakes, fakeSpreadsheet} = require('./helpers/fakes');
-const spreadsheet = fakeSpreadsheet(CONFIG, {timeZone: 'Europe/Amsterdam', tabs: {events: rows}});
+const spreadsheet = fakeSpreadsheet(CONFIG, {tabs: {events: rows}});
 const restore = installFakes({spreadsheet});
 try { /* … */
 } finally {
   restore();
 }
 ```
+
+`timeZone` defaults to `FIXTURE_ZONE`, an arbitrary zone: matching `CONFIG.timeZone` is chance, and most tests never
+format a date against it. Name one only where the answer turns on it — `CONFIG.timeZone` to agree with the shipped
+config, a zone of its own where the subject *is* two zones disagreeing, as in `upcoming-events.test.js`.
+
+Where a fixture *constrains* the zone, assert the property rather than trusting the literal: `reseed` in
+`seed-carry-over.test.js` spells midnight UTC, so a zone west of UTC reads a day earlier and the carry-over key misses.
+It checks each date survives the projection, naming the cause instead of a lost note.
 
 A fake spreadsheet takes its headers from the live `CONFIG.columns`, never from a pasted fixture, so a test cannot
 quietly drift from the contract it is meant to be relying on. Build the rows the same way, with `rowFor`, so no fixture

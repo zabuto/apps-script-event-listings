@@ -14,10 +14,13 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const { loadProject } = require('./helpers/project');
-const { installFakes, fakeSpreadsheet, rowFor } = require('./helpers/fakes');
+const { installFakes, fakeSpreadsheet, rowFor, formatDate } = require('./helpers/fakes');
 
 const boot = loadProject('bootstrap');
 const CONFIG = boot.CONFIG;
+
+/** The zone the reseed fixtures sit in, which `reseed` holds to the one property it needs. */
+const ZONE = 'Europe/Amsterdam';
 
 const NOTE = 'Ask for Jo at the side door — not for the map';
 
@@ -47,7 +50,13 @@ function plainName(names) {
 
 /** Runs one writer over a tab that already holds `rows`, and hands back the grid it left behind. */
 function reseed(writer, tabKey, rows) {
-  const ss = fakeSpreadsheet(CONFIG, { timeZone: 'Europe/Amsterdam', tabs: { [tabKey]: rows } });
+  for (const cell of (Array.isArray(rows) ? rows : rows.rows || []).flat()) {
+    if (!(cell instanceof Date)) continue;
+    const day = cell.toISOString().slice(0, 10);
+    assert.strictEqual(formatDate(cell, ZONE, 'yyyy-MM-dd'), day,
+      `${ZONE} reads the fixture date ${day} as another day, so no carry-over key can match`);
+  }
+  const ss = fakeSpreadsheet(CONFIG, { timeZone: ZONE, tabs: { [tabKey]: rows } });
   const sheet = ss.getSheetByName(CONFIG.tabs[tabKey]);
   const restore = installFakes({ spreadsheet: ss });
   try {
@@ -221,7 +230,6 @@ test('the dropdowns are back on the block after the write, not left suspended', 
   // guaranteeing the one thing the map depends on.
   const venueColumn = boot.columnLetter_('events', 'venue');
   const ss = fakeSpreadsheet(CONFIG, {
-    timeZone: 'Europe/Amsterdam',
     tabs: { events: { rows: [], validation: { [venueColumn]: activeVenueNames() } } },
   });
   const sheet = ss.getSheetByName(CONFIG.tabs.events);
