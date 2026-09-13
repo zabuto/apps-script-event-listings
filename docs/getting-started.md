@@ -123,11 +123,12 @@ to come off the Project Settings page.
 The scaffolding's `setupDocument` printed two or three ids. Put them into the **bound** project: Extensions → Apps
 Script → **Project Settings** → **Script Properties** → Add script property:
 
-| Property        | Value                          | Required                             |
-|-----------------|--------------------------------|--------------------------------------|
-| `EVENTS_DOC_ID` | the agenda document            | yes, for the document functions      |
-| `PDF_FOLDER_ID` | the archive folder             | only for `saveEventsPdf`             |
-| `LOGO_FILE_ID`  | an image in the project folder | no — the document builds without one |
+| Property        | Value                          | Required                              |
+|-----------------|--------------------------------|---------------------------------------|
+| `EVENTS_DOC_ID` | the agenda document            | yes, for the document functions       |
+| `PDF_FOLDER_ID` | the archive folder             | only for `saveEventsPdf`              |
+| `LOGO_FILE_ID`  | an image in the project folder | no — the document builds without one  |
+| `MAP_ID`        | the published map, from step 8 | only for the map link in the document |
 
 Run `showConfiguration` in that project to check: it prints each property and what the id resolves to, so an id from the
 wrong account shows up immediately.
@@ -154,9 +155,12 @@ The map is the one part that is not scripted, because My Maps has no API:
 3. Position column: **Location**. Title column: **Title**.
 4. Style the pins and name the layer, then set the map's sharing to whatever it should be — a public link, a named list,
    or nothing yet. My Maps has no API, so no part of this codebase can read or change that.
-5. Copy the `/view` URL into `CONFIG.mapUrl`, run `./scripts/sync-config.sh`, and push both projects.
+5. Copy the `mid=` value out of the map's URL — the id alone, without the `&ll=…&z=…` tail the browser appends — and
+   put it into the bound project as the `MAP_ID` script property.
 
-Use the **`/view`** URL, never `/edit`: it is printed in the document and in every PDF anyone downloads.
+The property holds the id, never a URL: the code composes the **`/view`** address around it, so the link in the document
+and in every downloaded PDF cannot be the `/edit` one. `showConfiguration` prints the address it composes. Without
+`MAP_ID` the line is omitted and the document builds regardless.
 
 ## Rebuilding from scratch
 

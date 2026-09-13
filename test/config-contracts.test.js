@@ -108,36 +108,6 @@ test('the weekly refresh names a real weekday and a real hour', () => {
     && CONFIG.weeklyRefresh.hour >= 0 && CONFIG.weeklyRefresh.hour <= 23);
 });
 
-/**
- * Fails when a map URL is an edit link.
- *
- * A function rather than an inline assertion because `CONFIG.mapUrl` is empty in the shipped config:
- * the rule is then tested against probe values as well as against the live value when there is one.
- */
-function assertViewOnly(mapUrl) {
-  assert.strictEqual(mapUrl.includes('/edit'), false,
-    `"${mapUrl}" is an edit link — it is printed in the document's meta line and in every page ` +
-    'footer, so it would hand the map\'s editor to every reader and every downloaded PDF');
-}
-
-test('the map URL is the /view form, never /edit', t => {
-  // Skipped rather than returned when unset, so an unexercised rule shows in the summary as a test
-  // that did not run rather than one that passed.
-  if (!CONFIG.mapUrl) {
-    t.skip('CONFIG.mapUrl is not set, so there is no live value to check');
-    return;
-  }
-  assertViewOnly(CONFIG.mapUrl);
-});
-
-test('an /edit map URL is refused, whether or not the config happens to hold one', () => {
-  // The rule itself, enforced from the moment an installer pastes a URL in.
-  assert.throws(() => assertViewOnly('https://www.google.com/maps/d/edit?mid=1AbC&usp=sharing'),
-    /is an edit link/);
-  assert.doesNotThrow(() =>
-    assertViewOnly('https://www.google.com/maps/d/view?mid=1AbC&usp=sharing'));
-});
-
 test('every Script Property is named, and none holds an id', () => {
   // The names live in config; the ids live in Script Properties. That is what keeps this repo
   // publishable.

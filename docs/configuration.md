@@ -16,21 +16,21 @@ the next sync silently overwrites your change.
 
 ## What each section does
 
-| Section         | What it controls                                                                 |
-|-----------------|----------------------------------------------------------------------------------|
-| `brand`         | the name in the document and footer, its tagline, and the spreadsheet menu       |
-| `timeZone`      | passed explicitly to every date format — do not rely on the manifest             |
-| `mapUrl`        | the published map's **`/view`** URL. Empty means the line is omitted             |
-| `social`        | the label reports use for handles, and the profile URL they are appended to      |
-| `style`         | one font, one size floor, and eleven colour *roles*                              |
-| `spreadsheet`   | folder and file name, locale, date format                                        |
-| `tabs`          | tab names — **and their order**, which is load-bearing                           |
-| `columns`       | the column contracts, by key and header                                          |
-| `values`        | the strings the statuses and computed columns use, in formulas and in code       |
-| `mapExport`     | the five popup column labels, the country suffix, the title separator            |
-| `doc`           | the document's file name, title, wording, margins, logo and PDF archive          |
-| `weeklyRefresh` | which day and hour the document rebuilds itself                                  |
-| `properties`    | the *names* of the Script Properties that hold file ids — not the ids            |
+| Section          | What it controls                                                                   |
+|------------------|------------------------------------------------------------------------------------|
+| `brand`          | the name in the document and footer, its tagline, and the spreadsheet menu         |
+| `timeZone`       | passed explicitly to every date format — do not rely on the manifest               |
+| `mapViewBaseUrl` | the `/view` address a map id is composed into — the id itself is a Script Property |
+| `social`         | the label reports use for handles, and the profile URL they are appended to        |
+| `style`          | one font, one size floor, and eleven colour *roles*                                |
+| `spreadsheet`    | folder and file name, locale, date format                                          |
+| `tabs`           | tab names — **and their order**, which is load-bearing                             |
+| `columns`        | the column contracts, by key and header                                            |
+| `values`         | the strings the statuses and computed columns use, in formulas and in code         |
+| `mapExport`      | the five popup column labels, the country suffix, the title separator              |
+| `doc`            | the document's file name, title, wording, margins, logo and PDF archive            |
+| `weeklyRefresh`  | which day and hour the document rebuilds itself                                    |
+| `properties`     | the *names* of the Script Properties that hold the ids — not the ids themselves    |
 
 ## The things that are not just labels
 
@@ -78,8 +78,8 @@ drawn in the palette's own colours at the size the document renders.
 
 ## Script Properties
 
-File ids are not configuration — they are one person's Drive. They live in Script Properties, which is also why this
-repo can be public without a scrubbing pass.
+An id is not configuration — it is one person's Drive. Ids live in Script Properties, which is also why this repo can be
+public without a scrubbing pass.
 
 | Property                 | Project     | Set by                             | Required            |
 |--------------------------|-------------|------------------------------------|---------------------|
@@ -88,10 +88,17 @@ repo can be public without a scrubbing pass.
 | `EVENTS_DOC_ID`          | `src`       | you, from `setupDocument`'s output | for the document    |
 | `PDF_FOLDER_ID`          | `src`       | you, from `setupDocument`'s output | for `saveEventsPdf` |
 | `LOGO_FILE_ID`           | `src`       | you, if you want a logo            | no                  |
+| `MAP_ID`                 | `src`       | you, from the published map's URL  | for the map link    |
 
 Set them at Extensions → Apps Script → Project Settings → Script Properties. `showConfiguration` in the bound project
-prints each one and what it resolves to. It lists `SPREADSHEET_ID` as well, and `(not set)` there is correct rather than
-a fault: that one belongs to the scaffolding project, and the bound script never reads it.
+prints each one and what it resolves to, and the map address it composes from `MAP_ID`. It lists `SPREADSHEET_ID` as
+well, and `(not set)` there is correct rather than a fault: a property store belongs to one script project, and the
+bound script reaches its spreadsheet through `getActive()`. The scaffolding's copy is in that project's own Project
+Settings; the same id sits in the spreadsheet's URL, between `/d/` and `/edit`.
+
+`MAP_ID` holds the `mid` out of the map's URL and nothing more. The `.../maps/d/view?mid=` in front of it is
+`CONFIG.mapViewBaseUrl`, which is what keeps an `/edit` address and the `&ll=…&z=…` viewport tail out of the document.
+A whole URL pasted in composes into a visibly broken link in `showConfiguration`, not a working one.
 
 The organiser handle column is a separate setting from `social`: its header lives in `columns.organisers` and still
 reads `Instagram` until you change it too. Re-pointing `social` at another network is two edits, not one.

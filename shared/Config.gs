@@ -14,8 +14,8 @@
  *      the list or inserting a column carries formulas, reads and protections with it, through
  *      `columnLetter_()` / `columnIndex_()`. Changing a `key` is the one thing that is a code change.
  *
- * File ids are deliberately **not** here — they live in Script Properties, so a public repo never
- * carries someone's Drive layout. See `docs/configuration.md`.
+ * No id is here, a file's or the published map's: they live in Script Properties, so a public repo
+ * never carries someone's Drive layout. See `docs/configuration.md`.
  */
 const CONFIG = {
 
@@ -38,11 +38,11 @@ const CONFIG = {
   timeZone: 'Europe/Amsterdam',
 
   /**
-   * The **view** URL of the published map (`.../maps/d/view?mid=…`), never `/edit`: it is printed in
-   * the document's meta line and every page footer, so an edit link would hand the map's editor to
-   * every reader and every PDF they download. Empty omits the line.
+   * The address a map id is composed into. Fixing the **view** form here keeps an `/edit` link, and
+   * the `&ll=…&z=…` viewport a browser appends, out of the document and every PDF downloaded from
+   * it. The id is in `properties.mapId`; without one the line is omitted.
    */
-  mapUrl: '',
+  mapViewBaseUrl: 'https://www.google.com/maps/d/view?mid=',
 
   /**
    * The social network organiser handles belong to. Handles are stored bare, without the `@`.
@@ -269,7 +269,7 @@ const CONFIG = {
   /* ───────────────────────────────────────────────────────────────── Script Properties ───── */
 
   /**
-   * File ids are **not** configuration in a repo — they are one person's Drive. They live in Script
+   * An id is **not** configuration in a repo — it is one person's Drive. Ids live in Script
    * Properties instead (Apps Script IDE → Project Settings → Script Properties), which is why this
    * codebase can be public without a scrubbing pass. These are the property *names*, not the values.
    */
@@ -278,5 +278,6 @@ const CONFIG = {
     eventsDocId: 'EVENTS_DOC_ID',      // read by the bound project
     logoFileId: 'LOGO_FILE_ID',        // optional
     pdfFolderId: 'PDF_FOLDER_ID',      // optional
+    mapId: 'MAP_ID',                   // optional — the map's `mid`, not a Drive id
   },
 };
