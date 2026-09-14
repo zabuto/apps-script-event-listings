@@ -79,37 +79,6 @@ function columnIndex_(tabKey, key) {
   return at;
 }
 
-/** `A`, `B`, … `AA`. Spreadsheet columns are base-26 with no zero, which is why this is a loop. */
-function columnLetter_(tabKey, key) {
-  let n = columnIndex_(tabKey, key) + 1;
-  let letter = '';
-  while (n > 0) {
-    const remainder = (n - 1) % 26;
-    letter = String.fromCharCode(65 + remainder) + letter;
-    n = Math.floor((n - remainder) / 26);
-  }
-  return letter;
-}
-
-/** A tab name as a formula may refer to it: quoted when it contains anything but word characters. */
-function tabRef_(tabKey) {
-  const name = CONFIG.tabs[tabKey];
-  if (!name) throw new Error(`No tab configured for "${tabKey}" — check CONFIG.tabs.`);
-  return /^[A-Za-z0-9_]+$/.test(name) ? name : `'${name.replace(/'/g, "''")}'`;
-}
-
-/** `Events!C2:C` — one column, from row 2 down. */
-function colRange_(tabKey, key, firstRow) {
-  const letter = columnLetter_(tabKey, key);
-  return `${tabRef_(tabKey)}!${letter}${firstRow || 2}:${letter}`;
-}
-
-/** `Venues!$A:$A` — the whole column, absolute, for a lookup. */
-function colLookup_(tabKey, key) {
-  const letter = columnLetter_(tabKey, key);
-  return `${tabRef_(tabKey)}!$${letter}:$${letter}`;
-}
-
 /**
  * A tab's data rows plus a by-key column lookup, with row 1 checked against the contract first.
  *
@@ -317,102 +286,280 @@ function notify_(message) {
 }
 
 
+/* ══════════════════════════════════════════════════════════════════════════ what publishes ═══ */
+
+/**
+ * All upcoming, non-cancelled events, oldest first — the whole listing, with no window applied.
+ *
+ * Read by both outputs that leave the sheet; the map narrows it to events with a venue and spreads
+ * each over its dates. **By column key** through `table_()`, never by position: a dropped column
+ * slides every index after it, and an agenda lists the private note instead of the title.
+ *
+ * `Upcoming?` is the whole of "does this publish?". The guards after it drop a row that cannot be
+ * sorted rather than throwing mid-rebuild.
+ */
+function upcomingEvents_() {
+  const events = table_('events');
+  const organisers = table_('organisers');
+
+  // Folded, because the map resolves the same handle the same way: an event naming its organiser in
+  // another case must reach it here too. A `Map` rather than an object, or
+  // `handles["constructor"]` answers from `Object.prototype` and a function renders as a handle.
+  const handles = new Map();
+  organisers.rows.forEach(row => {
+    const name = organisers.text(row, 'name');
+    if (name) handles.set(lookupKey_(name), organisers.get(row, 'social'));
+  });
+
+  // The cutoff has to be the *sheet's* today: `Upcoming?` compares against `TODAY()` in the
+  // spreadsheet's zone, while a bare `new Date()` follows the script project's, and `clasp push`
+  // reconciles neither. Both sides rendered `yyyyMMdd` in the spreadsheet's zone is the same
+  // calendar-day comparison the column makes.
+  const zone = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
+  const dayStamp = date => Utilities.formatDate(date, zone, 'yyyyMMdd');
+  const today = dayStamp(new Date());
+
+  return events.rows
+    .filter(row => events.get(row, 'upcoming') === CONFIG.values.scope.upcoming)
+    .filter(row => events.get(row, 'title'))
+    .map(row => {
+      const start = events.get(row, 'dateStart');
+      const end = events.get(row, 'dateEnd');
+      const organiser = events.text(row, 'organiser');
+      return {
+        start: start,
+        end: end instanceof Date ? end : start,
+        title: String(events.get(row, 'title')),
+        venue: events.text(row, 'venue'),
+        organiser: organiser,
+        city: events.text(row, 'city'),
+        when: events.text(row, 'when'),
+        // The map reads it to tell the two kinds of venue-less event apart: a concept event has no
+        // room yet, a confirmed one is a hole in the sheet.
+        status: events.get(row, 'status'),
+        // A stray `@` is stripped in every output rather than corrected in the sheet, where the
+        // hygiene checks flag it and a person fixes it.
+        handle: String(handles.get(lookupKey_(organiser)) || '').trim().replace(/^@+/, ''),
+      };
+    })
+    // `start instanceof Date` first, and not only to drop unsortable rows: it is what guarantees
+    // `end` is a Date by the time `dayStamp` sees it, since `end` falls back to `start` above.
+    .filter(event => event.start instanceof Date && dayStamp(event.end) >= today)
+    .sort((a, b) => a.start - b.start);
+}
+
+
 /* ═══════════════════════════════════════════════════════════════════════════════ map export ═══ */
 /*
- * The export tab is a formula, not a snapshot, so it stays current as events change and never needs
- * refreshing to be right. `refreshMapExport` exists to put it *back* — after an edit overwrites it,
- * or on a rebuilt sheet — and to report whether what it computed is safe to import.
+ * One row per **date**: a three-day run is three rows, each named for its day. Their pins share one
+ * coordinate, and the layer panel tells them apart, so the date leads the name.
  *
- * It lives here rather than in `bootstrap/` because this is the copy that ships: a formula authored
- * only in the scaffolding project could not be repaired by a maintainer. Deliberately **one** copy.
+ * Values, not a formula: a row per date needs the spellings that collapse here (`docs/gotchas.md`).
  */
 
 /**
- * Titled, upcoming, and placed somewhere.
+ * A calendar day as one number, which is what a run is stepped through in.
  *
- * `Upcoming?` already folds in "not cancelled" and "last day is today or later", so the first two
- * terms are the whole of *does this publish?* — the map and the dashboard cannot disagree about it.
- * The third term is the map's own: an event with no venue has no position, and its city is looked up
- * from the venue, so it has no city either. `refreshMapExport` names every event it leaves out.
+ * Days rather than milliseconds: the day a clock change falls on is 23 or 25 hours long, so adding
+ * 24 hours to midnight lands on the evening before. `Date.UTC` has no such day.
  */
-function mapExportCondition_() {
-  const scope = CONFIG.values.scope;
-  return (
-    `(${colRange_('events', 'title')}<>"")` +
-    `*(${colRange_('events', 'upcoming')}=${quoteLiteral_(scope.upcoming)})` +
-    `*(${colRange_('events', 'venue')}<>"")`
-  );
+function dayNumber_(year, month, day) {
+  return Math.round(Date.UTC(year, month - 1, day) / 86400000);
 }
 
 /**
- * Every column its own `FILTER`, and every lookup inside a `LAMBDA` where its argument is a single
- * value rather than an array.
+ * The calendar day a date cell holds, as the **spreadsheet's** zone sees it.
  *
- * The tidy spelling — one `LET`, names holding arrays, `INDEX` to pick columns — reads far better
- * and does not work: on a live sheet it returns the right rows with `#VALUE!` in every looked-up
- * column. `XLOOKUP` over an array held in a `LET` name collapses and `MAP` then receives arguments
- * of different lengths, so exactly the columns the map needs are the ones that die. The dashboard
- * filter fails the same way. Do not "simplify" either of them back.
+ * A date-only cell is midnight in that zone, and the script project's zone is a second setting
+ * `clasp push` does not reconcile. Read a few hours west, it is the evening before.
  */
-function mapExportFormula_() {
+function dayOf_(date, zone) {
+  const iso = Utilities.formatDate(date, zone, 'yyyy-MM-dd').split('-');
+  return dayNumber_(Number(iso[0]), Number(iso[1]), Number(iso[2]));
+}
+
+/** The parts of a day number, the weekday among them, numbered from Sunday as `dayNames` is. */
+function dayParts_(number) {
+  const at = new Date(number * 86400000);
+  return {
+    year: at.getUTCFullYear(),
+    month: at.getUTCMonth() + 1,
+    day: at.getUTCDate(),
+    weekDay: at.getUTCDay(),
+  };
+}
+
+/**
+ * A date as `CONFIG.mapExport.titleDateFormat` spells it, in the configured day and month names.
+ *
+ * Not `Utilities.formatDate`: it reads `mm` as the minutes, and takes its month names from the
+ * script project's locale. A token this cannot spell raises rather than naming a pin after it.
+ */
+function mapDateText_(parts) {
+  const format = CONFIG.mapExport.titleDateFormat;
+  const pad = (value, width) => String(value).padStart(width, '0');
+  const spell = {
+    d: () => String(parts.day),
+    dd: () => pad(parts.day, 2),
+    ddd: () => CONFIG.values.dayNames[parts.weekDay],
+    m: () => String(parts.month),
+    mm: () => pad(parts.month, 2),
+    mmm: () => CONFIG.values.monthNames[parts.month - 1],
+    // `y` is the sheet's own spelling of a two-digit year, and means what `yy` means.
+    y: () => pad(parts.year % 100, 2),
+    yy: () => pad(parts.year % 100, 2),
+    yyyy: () => pad(parts.year, 4),
+  };
+  return String(format).replace(/[A-Za-z]+/g, run => {
+    const spelling = spell[run.toLowerCase()];
+    if (!spelling) {
+      throw new Error(`CONFIG.mapExport.titleDateFormat is "${format}", and a map pin cannot be ` +
+        `named from "${run}": the tokens built here are d, dd, ddd, m, mm, mmm, y, yy and yyyy. ` +
+        'day and month names come from CONFIG.values.dayNames and monthNames, which hold short ' +
+        'names.');
+    }
+    return spelling();
+  });
+}
+
+/**
+ * The `When` one pin carries: its own date in full, and which day of a run it is.
+ *
+ * The events tab's `When` is a span — `13 Feb – 15 Feb 2027` — which every pin of the run would
+ * repeat while its name says one date.
+ */
+function mapWhenText_(parts, ordinal, days) {
+  const date = `${CONFIG.values.dayNames[parts.weekDay]} ${parts.day} ` +
+    `${CONFIG.values.monthNames[parts.month - 1]} ${parts.year}`;
+  if (days < 2 || !CONFIG.mapExport.runDay) return date;
+  return date + String(CONFIG.mapExport.runDay)
+    .replace('{day}', String(ordinal)).replace('{days}', String(days));
+}
+
+/**
+ * Every row the export tab should hold, and everything the refresh has to say about them.
+ *
+ * Built on `upcomingEvents_`, less the two things a pin cannot do: an event with no venue has no
+ * position, and a date that is over is one nobody can turn up on.
+ */
+function mapExportRows_() {
   const headers = CONFIG.mapExport.headers;
   if (headers.length !== 5) {
-    throw new Error('CONFIG.mapExport.headers must name exactly the five columns this formula ' +
-      `builds (title, when, venue, organiser, location); it has ${headers.length}. ` +
+    throw new Error('CONFIG.mapExport.headers must name exactly the five columns this builds ' +
+      `(title, when, venue, organiser, location); it has ${headers.length}. ` +
       'Change the labels freely — changing the count means changing this function.');
   }
+  const maxDays = CONFIG.mapExport.maxDays;
+  // A cap below one empties the map without failing: every event is then cut to no dates at all.
+  if (!(maxDays >= 1)) {
+    throw new Error(`CONFIG.mapExport.maxDays is ${maxDays} — an event occupies at least one date, ` +
+      'so a cap under 1 is an export with nothing in it.');
+  }
 
-  const cond = mapExportCondition_();
-  const col = key => `FILTER(${colRange_('events', key)}, ${cond})`;
-  const venueField = (arg, key) =>
-    `IFERROR(XLOOKUP(${arg}, ${colLookup_('venues', 'name')}, ${colLookup_('venues', key)}, ""), "")`;
+  const zone = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
+  const venues = table_('venues');
 
-  const site = venueField('vv', 'url');
-  const address = venueField('vv', 'address');
-  const postcode = venueField('vv', 'postcode');
-  const handle = `IFERROR(XLOOKUP(pp, ${colLookup_('organisers', 'name')}, ` +
-    `${colLookup_('organisers', 'social')}, ""), "")`;
+  // Keyed by the folded name, as every name lookup in the sheet is: an event naming
+  // `de nieuwe anita` reaches the venue listed as `De Nieuwe Anita`, which is how the `City` column
+  // resolved it too.
+  const details = new Map();
+  venues.rows.forEach(row => {
+    const name = venues.text(row, 'name');
+    if (!name) return;
+    details.set(lookupKey_(name), {
+      address: venues.text(row, 'address'),
+      postcode: venues.text(row, 'postcode'),
+      url: venues.text(row, 'url'),
+    });
+  });
 
-  // The city is appended to the title because the layer list shows titles and nothing else. The
-  // `City` column stays in the sheet — the list needs the title, the popup reads better with a row.
-  const suffix = quoteLiteral_(CONFIG.mapExport.titleSuffix);
-  const title = `MAP(${col('title')}, ${col('city')}, ` +
-    `LAMBDA(tt, cc, tt&IF(cc="", "", ${suffix}&cc)))`;
+  const join = CONFIG.mapExport.titleJoin;
+  const country = CONFIG.mapExport.countrySuffix ? ', ' + CONFIG.mapExport.countrySuffix : '';
+  const concept = CONFIG.values.eventStatus.concept;
+  const today = dayOf_(new Date(), zone);
 
-  // Address, postcode and city into one geocodable line, with the country appended here rather than
-  // kept in a column. A venue with no address still maps — on the city centre, which is reported.
-  const country = CONFIG.mapExport.countrySuffix
-    ? '&' + quoteLiteral_(', ' + CONFIG.mapExport.countrySuffix)
-    : '';
-  const loc = `MAP(${col('venue')}, ${col('city')}, LAMBDA(vv, cc,` +
-    `IF(${address}="", vv&", "&cc${country},` +
-    `${address}&", "&IF(${postcode}="", "", ${postcode}&" ")&cc${country})))`;
+  const built = [];
+  const announced = [];
+  const roomless = [];
+  const capped = [];
+  const approximate = [];
+  let placed = 0;
+  let past = 0;
 
-  // Venue with its own site, organiser with their handle: one fact per row, and no labelled blank for
-  // the ones that have neither. A URL column tends to hold bare hosts, and My Maps only linkifies one
-  // carrying a scheme, so it is added here unless there already is one.
-  const venue = `MAP(${col('venue')}, LAMBDA(vv, vv&` +
-    `IF(${site}="", "", " — "&IF(LEFT(LOWER(${site}),4)="http", ${site}, "https://"&${site}))))`;
-  const profile = quoteLiteral_(' — ' + CONFIG.social.profileBaseUrl);
-  const organiser = `MAP(${col('organiser')}, LAMBDA(pp,` +
-    `pp&IF(${handle}="", "", ${profile}&SUBSTITUTE(${handle},"@",""))))`;
+  upcomingEvents_().forEach(event => {
+    // Two lists, because they mean opposite things: a concept event is allowed to have no venue, so
+    // naming it as a gap on every refresh is how a report stops being read, while a confirmed one
+    // with no venue is a real hole in the sheet.
+    if (!event.venue) {
+      (event.status === concept ? announced : roomless).push(event.title);
+      return;
+    }
+    const venue = details.get(lookupKey_(event.venue)) || { address: '', postcode: '', url: '' };
 
-  // The guard is not decoration: with nothing upcoming, FILTER returns #N/A and the import source
-  // would be an error rather than an empty tab.
-  const scope = CONFIG.values.scope;
-  const counted = `COUNTIFS(${colRange_('events', 'title')},"<>",` +
-    `${colRange_('events', 'upcoming')},${quoteLiteral_(scope.upcoming)},` +
-    `${colRange_('events', 'venue')},"<>")=0`;
-  return `=IFERROR(IF(${counted}, "",` +
-    `HSTACK(${title}, ${col('when')}, ${venue}, ${organiser}, ${loc})), "")`;
+    // Address, postcode and city in one geocodable line, with the country appended here rather than
+    // kept in a column. A venue with no address still maps — onto the city centre, which is reported.
+    const location = venue.address
+      ? `${venue.address}, ${venue.postcode ? venue.postcode + ' ' : ''}${event.city}${country}`
+      : `${event.venue}, ${event.city}${country}`;
+    if (!venue.address) approximate.push(event.title);
+
+    // Venue with its own site, organiser with their handle: one fact per row, and no labelled blank
+    // for the ones that have neither. A URL column tends to hold bare hosts, and My Maps only
+    // linkifies one carrying a scheme, so it is added here unless there already is one.
+    const site = venue.url
+      ? ' — ' + (/^https?:\/\//i.test(venue.url) ? venue.url : 'https://' + venue.url)
+      : '';
+    const organiser = event.organiser +
+      (event.handle ? ' — ' + CONFIG.social.profileBaseUrl + event.handle : '');
+
+    const first = dayOf_(event.start, zone);
+    const days = Math.max(dayOf_(event.end, zone) - first + 1, 1);
+    if (days > maxDays) capped.push(`${event.title} (${days} dates)`);
+
+    for (let ordinal = 1; ordinal <= Math.min(days, maxDays); ordinal++) {
+      const number = first + ordinal - 1;
+      // A run under way keeps the dates it has left and loses the ones that are over: a pin a reader
+      // has to work out is past is worse than no pin.
+      if (number < today) {
+        past++;
+        continue;
+      }
+      const parts = dayParts_(number);
+      built.push({
+        day: number,
+        row: [
+          mapDateText_(parts) + join + event.title,
+          mapWhenText_(parts, ordinal, days),
+          event.venue + site,
+          organiser,
+          location,
+        ],
+      });
+    }
+    placed++;
+  });
+
+  // By date, so the layer panel lists the names in the order the dates come. The name settles a tie,
+  // which is what makes a rebuild of unchanged data identical.
+  built.sort((a, b) => a.day - b.day ||
+    (a.row[0] < b.row[0] ? -1 : a.row[0] > b.row[0] ? 1 : 0));
+
+  return {
+    rows: built.map(entry => entry.row),
+    placed: placed,
+    announced: announced,
+    roomless: roomless,
+    capped: capped,
+    approximate: approximate,
+    past: past,
+  };
 }
 
 /**
- * Rewrites the export tab and proves it by what the cells computed, never by what was stored.
+ * Rewrites the export tab and proves it by what the cells hold, not by what was sent.
  *
- * `getFormula` returns whatever string went in, including a broken one, and a spilled formula fails
- * **per column**: a check that reads `A2` alone finds the title column computing perfectly and passes
- * a tab whose next two columns are `#VALUE!` on every row. Every column of every row is read.
+ * `setValues` stores a string opening with `=` as a formula, and a title is whatever a maintainer
+ * typed. So the block is plain text before the write, and read back after it.
  */
 function refreshMapExport() {
   const ss = SpreadsheetApp.getActive();
@@ -421,14 +568,15 @@ function refreshMapExport() {
   if (!sheet) throw new Error(`No "${name}" tab in this spreadsheet.`);
 
   const headers = CONFIG.mapExport.headers;
-  const separator = argSeparator_(ss);
+  const built = mapExportRows_();
+  const width = headers.length;
   const lines = [];
   const say = line => lines.push(line);
+  const concept = CONFIG.values.eventStatus.concept;
 
-  // Everything past the contract goes first. Row 1 is the one part a formula change does not clean
-  // up after itself: spilled values vanish with their formula, a header does not, and a leftover
-  // header with nothing under it is a field My Maps imports — an empty row in every popup.
-  const width = headers.length;
+  // Everything past the contract goes first. A dropped column takes its rows with it but not its
+  // header, and a header with nothing under it is a field My Maps imports — an empty row in every
+  // popup.
   const stale = sheet.getMaxColumns() - width;
   if (stale > 0) {
     sheet.getRange(1, width + 1, sheet.getMaxRows(), stale).clearContent();
@@ -439,69 +587,66 @@ function refreshMapExport() {
     .setValues([headers])
     .setBackground(palette.primary).setFontColor(palette.surface).setFontWeight('bold');
   sheet.setFrozenRows(1);
-  sheet.getRange(2, 1, sheet.getMaxRows() - 1, width).clearContent();
-  setFormula_(sheet.getRange('A2'), mapExportFormula_(), separator);
+
+  // Cleared over the whole tab rather than over what is about to be written: an export shrinks as
+  // dates pass, and a row left underneath imports as a pin on a date that is gone.
+  const body = sheet.getRange(2, 1, sheet.getMaxRows() - 1, width);
+  body.clearContent();
+  body.setNumberFormat('@');
+  if (built.rows.length) {
+    sheet.getRange(2, 1, built.rows.length, width).setValues(built.rows);
+  }
   SpreadsheetApp.flush();
 
+  const written = built.rows.length
+    ? sheet.getRange(2, 1, built.rows.length, width).getDisplayValues()
+    : [];
+  const differing = written.reduce((total, row, r) =>
+    total + row.filter((value, c) => value !== built.rows[r][c]).length, 0);
   const rows = countFilled_(sheet.getRange(2, 1, sheet.getMaxRows() - 1, 1));
-  const block = rows ? sheet.getRange(2, 1, rows, width).getDisplayValues() : [];
-  const broken = block.reduce((total, row) =>
-    total + row.filter(value => String(value).startsWith('#')).length, 0);
 
-  const events = table_('events');
-  const scope = CONFIG.values.scope;
-  const publishes = row => events.get(row, 'title') && events.get(row, 'upcoming') === scope.upcoming;
-  const expected = events.rows.filter(row => publishes(row) && events.text(row, 'venue')).length;
-  const unplaced = events.rows
-    .filter(row => publishes(row) && !events.text(row, 'venue'))
-    .map(row => ({ title: String(events.get(row, 'title')), status: events.get(row, 'status') }));
-  const concept = CONFIG.values.eventStatus.concept;
-  const announced = unplaced.filter(row => row.status === concept).map(row => row.title);
-  const roomless = unplaced.filter(row => row.status !== concept).map(row => row.title);
-
-  say(`${name} rebuilt: ${rows} row(s), ${expected} expected, ${broken} error cell(s)` +
-      (rows === expected && !broken ? ' ✓' : ' ⚠'));
+  say(`${name} rebuilt: ${rows} row(s) from ${built.placed} event(s)` +
+      (rows === built.rows.length && !differing ? ' ✓' : ' ⚠'));
   say(`Columns: ${headers.join(' | ')}`);
+  say('One row per date: an event running over three days is three rows, each named for its date.');
   if (stale > 0) {
     say(`Cleared ${stale} column(s) past the contract, headers included.`);
   }
-  if (broken || rows !== expected) {
+  if (differing || rows !== built.rows.length) {
     say('');
-    say('DO NOT IMPORT this tab — the map would take the errors as place names.');
+    say(`DO NOT IMPORT this tab — ${built.rows.length} row(s) were written, the tab reads back ` +
+        `${rows}, and ${differing} cell(s) hold something other than what this run computed.`);
   }
-  // Two lists, because they mean opposite things: a concept event is allowed to have no venue, so
-  // naming it as a gap every refresh is how a report stops being read, while a confirmed one with no
-  // venue is a real hole in the sheet.
-  if (announced.length) {
-    say(`${concept}, venue still to be announced: ${announced.join(' · ')}`);
+  if (built.past) {
+    say(`${built.past} date(s) of a run already under way are past, so they are not on the map.`);
+  }
+  if (built.announced.length) {
+    say(`${concept}, venue still to be announced: ${built.announced.join(' · ')}`);
     say(`Expected, not a gap. They stay in ${CONFIG.tabs.events} and the document lists them as`);
     say(`"${CONFIG.doc.venueTba}" — a pin cannot say that, which is why they are not on the map.`);
   }
-  if (roomless.length) {
+  if (built.roomless.length) {
     say(`⚠ ${CONFIG.values.eventStatus.confirmed} with no venue, so left off the map: ` +
-        roomless.join(' · '));
+        built.roomless.join(' · '));
     say('Check data names these too: give them a venue, or set them back to ' + concept + '.');
   }
-
-  // A pin that lands on a city centre rather than on the venue, named rather than left to the import
-  // report nobody re-reads. Counting commas cannot tell the two apart, so ask the venues tab.
-  const venues = table_('venues');
-  const addressless = venues.rows
-    .filter(row => venues.get(row, 'name') && !venues.get(row, 'address'))
-    .map(row => venues.text(row, 'name'));
-  const location = headers.length - 1;                  // the last column this formula builds
-  // The location cell carries the *event's* spelling of the venue, which the sheet resolved to this
-  // row whatever its case, so the prefix is a name like any other.
-  const approximate = block
-    .filter(row => addressless.some(venue =>
-      lookupKey_(row[location]).startsWith(lookupKey_(venue) + ',')))
-    .map(row => row[0]);
-  if (approximate.length) {
-    say(`Geocoding by venue name, so the pin lands on the city centre: ${approximate.join(' · ')}`);
+  if (built.capped.length) {
+    say(`⚠ Cut to ${CONFIG.mapExport.maxDays} dates, which is as many as one event may take: ` +
+        built.capped.join(' · '));
+    say(`Check the end date in ${CONFIG.tabs.events} — a year typed wrong is what this usually is.`);
+  }
+  if (built.approximate.length) {
+    say(`Geocoding by venue name, so the pin lands on the city centre: ` +
+        built.approximate.join(' · '));
+  }
+  const limit = CONFIG.mapExport.importRowLimit;
+  if (built.rows.length > limit) {
+    say(`⚠ ${built.rows.length} rows, and one layer imports ${limit}: the rest is dropped by the ` +
+        'import without a word. This tab is the only place the whole export can be read.');
   }
 
   say('');
-  say('The tab is live — it recomputes by itself. The map does not:');
+  say('The tab holds what this run computed, and does not follow the sheet. The map follows neither:');
   say(`re-import it (layer menu → delete, then Add layer → Import), position column`);
   say(`"${headers[headers.length - 1]}", title column "${headers[0]}".`);
   say('');
@@ -512,78 +657,8 @@ function refreshMapExport() {
 }
 
 
-/* ═════════════════════════════════════════════════════════════════ formulas, in the dialect ═══ */
-
 /**
- * The sheet's argument separator, detected against the live file and cached.
- *
- * `setFormula` does not translate separators: in a sheet whose locale wants `;` a comma-separated
- * formula is stored verbatim and then evaluates to `#ERROR!` — and *storing* it succeeds, so nothing
- * raises. Detected rather than assumed, because the locale deciding it is a setting any maintainer
- * can change, and cached per locale so the probe runs about once.
- */
-function argSeparator_(ss) {
-  const properties = PropertiesService.getScriptProperties();
-  const key = 'ARG_SEPARATOR:' + ss.getSpreadsheetLocale();
-  const cached = properties.getProperty(key);
-  if (cached) return cached;
-
-  const name = '_separator_probe';
-  const existing = ss.getSheetByName(name);
-  if (existing) ss.deleteSheet(existing);
-  const probe = ss.insertSheet(name);
-  try {
-    probe.getRange('A1').setFormula('=IF(1=1,"ok","")');
-    SpreadsheetApp.flush();
-    const separator = probe.getRange('A1').getDisplayValue() === 'ok' ? ',' : ';';
-    properties.setProperty(key, separator);
-    return separator;
-  } finally {
-    const leftover = ss.getSheetByName(name);
-    if (leftover) ss.deleteSheet(leftover);
-  }
-}
-
-/** Separators outside string literals only, so a comma inside `", Netherlands"` survives intact. */
-function localizeFormula_(formula, separator) {
-  if (separator === ',') return formula;
-  let out = '';
-  let inString = false;
-  for (const character of formula) {
-    if (character === '"') inString = !inString;
-    out += (character === ',' && !inString) ? separator : character;
-  }
-  return out;
-}
-
-/** setFormula, but in the dialect the sheet actually parses. */
-function setFormula_(range, formula, separator) {
-  range.setFormula(localizeFormula_(formula, separator));
-}
-
-/**
- * A value as a formula string literal: wrapped in quotes, with any quote inside it doubled.
- *
- * Sheets escapes a quote by doubling it. Interpolating a config value raw closes the string early: a
- * `dateTba` reading `date "to be announced"` lands in the `When` column as
- * `IF(A2="","date "to be announced"",…)`, four quotes that pair up wrongly. The offline check cannot
- * see it either, because doubling a quote leaves the *count* even. It surfaces in the cell, as a
- * parse error or as a formula that quietly parses into something else.
- *
- * **Every `Config.gs` value that reaches a formula goes through here** — the statuses, the scope
- * words, the day and month names, the unknown-venue marker, the map's title and country suffixes,
- * the social profile URL. All of them are typed by a person, so drawing a line between "a phrase" and
- * "a label" only decides which half breaks silently. What stays spelled inline is the vocabulary the
- * code itself owns and no setting can reach: the `"no matches"` the dashboard tests for, and
- * operators like `"<>"`.
- */
-function quoteLiteral_(value) {
-  const text = value === null || value === undefined ? '' : String(value);
-  return '"' + text.replace(/"/g, '""') + '"';
-}
-
-/**
- * Non-empty cells in a column. `getLastRow()` is no use on a tab fed by a spilled formula: it returns
+ * Non-empty cells in a column. `getLastRow()` is no use on a tab an array formula feeds: it returns
  * `""` for every empty row, and an empty string is a value, so the sheet reports a thousand rows.
  */
 function countFilled_(range) {
@@ -669,6 +744,8 @@ function generateEventsDoc() {
     }
   });
 
+  mapLine_(body);
+
   if (CONFIG.doc.outro) {
     const outro = body.appendParagraph(CONFIG.doc.outro);
     outro.editAsText().setFontFamily(CONFIG.style.font).setFontSize(10).setItalic(true)
@@ -729,7 +806,8 @@ function docReport_(events, docId) {
     lines.push('');
     lines.push(`Listed as "${CONFIG.doc.venueTba}": ${tba.join(' · ')}`);
     lines.push('A concept event may have no venue yet. It is in here and on no map — a pin cannot say');
-    lines.push(`that — so ${CONFIG.tabs.mapExport} is shorter than this document by exactly these.`);
+    lines.push(`that. ${CONFIG.tabs.mapExport} counts dates rather than events, so its row count and`);
+    lines.push('this one do not line up either way.');
   }
 
   const linked = events.filter(event => event.handle).length;
@@ -743,70 +821,6 @@ function docReport_(events, docId) {
   lines.push(`Read it:  https://docs.google.com/document/d/${docId}/preview`);
   lines.push(`As a PDF: https://docs.google.com/document/d/${docId}/export?format=pdf`);
   return lines.join('\n');
-}
-
-/**
- * All upcoming, non-cancelled events, oldest first — the whole listing, with no window applied.
- *
- * Read **by column key** through `table_()`, never by position: `row[0]`…`row[9]` breaks silently —
- * drop a column from a lookup tab and every index after it slides one over while the code goes on
- * answering. The shape that takes here is an agenda listing the private note column instead of the
- * title, and a private column is the one thing no output may ever read.
- *
- * `Upcoming?` already folds in *titled*, *dated*, *not cancelled* and *last day today or later*, so
- * filtering on it is the whole of "does this publish?". The guards after it earn their place: this
- * function sorts by `start` and formats it, so a row that cannot be sorted must drop out here rather
- * than throw halfway through a rebuild.
- */
-function upcomingEvents_() {
-  const events = table_('events');
-  const organisers = table_('organisers');
-
-  // The map export resolves the same handle with `XLOOKUP`, so an event naming its organiser in
-  // another case has to reach it here too, or the document drops a link the pin still carries. A
-  // `Map` rather than an object: `handles["constructor"]` would otherwise answer from
-  // `Object.prototype`, and the source of a function renders as a handle.
-  const handles = new Map();
-  organisers.rows.forEach(row => {
-    const name = organisers.text(row, 'name');
-    if (name) handles.set(lookupKey_(name), organisers.get(row, 'social'));
-  });
-
-  // The cutoff has to be the *sheet's* today. `Upcoming?` compares against `TODAY()`, which follows
-  // the spreadsheet's time zone, while a bare `new Date()` follows the script project's — two
-  // separate settings, and `clasp push` reconciles neither: the server keeps the project's own value
-  // and ignores the manifest. Left as local date arithmetic, an event that ended yesterday in
-  // Amsterdam is still "today" to a project sitting on a US zone, and goes out in the published
-  // agenda while the sheet correctly calls it Past. Both sides rendered `yyyyMMdd` in the
-  // spreadsheet's zone is the same calendar-day comparison the column makes.
-  const zone = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
-  const dayStamp = date => Utilities.formatDate(date, zone, 'yyyyMMdd');
-  const today = dayStamp(new Date());
-
-  return events.rows
-    .filter(row => events.get(row, 'upcoming') === CONFIG.values.scope.upcoming)
-    .filter(row => events.get(row, 'title'))
-    .map(row => {
-      const start = events.get(row, 'dateStart');
-      const end = events.get(row, 'dateEnd');
-      const organiser = events.text(row, 'organiser');
-      return {
-        start: start,
-        end: end instanceof Date ? end : start,
-        title: String(events.get(row, 'title')),
-        venue: events.text(row, 'venue'),
-        organiser: organiser,
-        city: events.text(row, 'city'),
-        when: events.text(row, 'when'),
-        // A stray `@` is stripped in every output rather than corrected in the sheet, where the
-        // hygiene checks flag it and a person fixes it.
-        handle: String(handles.get(lookupKey_(organiser)) || '').trim().replace(/^@+/, ''),
-      };
-    })
-    // `start instanceof Date` first, and not only to drop unsortable rows: it is what guarantees
-    // `end` is a Date by the time `dayStamp` sees it, since `end` falls back to `start` above.
-    .filter(event => event.start instanceof Date && dayStamp(event.end) >= today)
-    .sort((a, b) => a.start - b.start);
 }
 
 function titleBlock_(body, events) {
@@ -845,13 +859,38 @@ function titleBlock_(body, events) {
   }
 
   const stamp = Utilities.formatDate(new Date(), tz, 'd MMMM yyyy');
-  const mapUrl = mapUrl_();
-  const meta = body.appendParagraph(`${events.length} events · updated ${stamp}` +
-    (mapUrl ? ` · ${mapUrl}` : ''));
+  const meta = body.appendParagraph(`${events.length} events · updated ${stamp}`);
   meta.editAsText().setFontFamily(font).setFontSize(10).setForegroundColor(palette.muted);
   meta.setSpacingAfter(10);
 
   rule_(body, palette.primary, 3);
+}
+
+/**
+ * The link to the published map, as a sentence a reader can act on.
+ *
+ * The whole sentence carries the link, which is what a screen reader announces. Without a map id
+ * nothing is written: a line about a map that is not there is worse than no line.
+ */
+function mapLine_(body) {
+  const url = mapUrl_();
+  if (!url || !CONFIG.doc.mapLink) return;
+
+  const marker = CONFIG.doc.mapLinkIcon ? CONFIG.doc.mapLinkIcon + ' ' : '';
+  const paragraph = body.appendParagraph(marker + CONFIG.doc.mapLink);
+  const text = paragraph.editAsText();
+  text.setFontFamily(CONFIG.style.font).setFontSize(10)
+    .setForegroundColor(CONFIG.style.palette.link)
+    .setLinkUrl(url)
+    // Docs underlines what it links, and paints it its own blue. Both are overridden here, in that
+    // order: the link is set first, or the styling is what it overrides.
+    .setUnderline(false);
+
+  // The marker in the brand colour, the sentence in the one colour a link is spelled in.
+  if (marker) {
+    text.setForegroundColor(0, CONFIG.doc.mapLinkIcon.length - 1, CONFIG.style.palette.primary);
+  }
+  paragraph.setSpacingBefore(18);
 }
 
 function monthHeading_(body, label) {
@@ -945,9 +984,7 @@ function rule_(body, color, thickness) {
  */
 function ensureFooter_(doc) {
   if (doc.getFooter()) return;
-  const mapUrl = mapUrl_();
-  const paragraph = doc.addFooter().appendParagraph(
-    CONFIG.brand.name + (mapUrl ? ' · ' + mapUrl : ''));
+  const paragraph = doc.addFooter().appendParagraph(CONFIG.brand.name);
   paragraph.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
   paragraph.editAsText().setFontFamily(CONFIG.style.font).setFontSize(8)
     .setForegroundColor(CONFIG.style.palette.muted);

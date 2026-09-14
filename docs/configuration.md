@@ -20,15 +20,15 @@ the next sync silently overwrites your change.
 |------------------|------------------------------------------------------------------------------------|
 | `brand`          | the name in the document and footer, its tagline, and the spreadsheet menu         |
 | `timeZone`       | passed explicitly to every date format — do not rely on the manifest               |
-| `mapViewBaseUrl` | the `/view` address a map id is composed into — the id itself is a Script Property |
+| `mapViewBaseUrl` | the `/viewer` address a map id is composed into — the id itself is a Script Property |
 | `social`         | the label reports use for handles, and the profile URL they are appended to        |
 | `style`          | one font, one size floor, and eleven colour *roles*                                |
 | `spreadsheet`    | folder and file name, locale, date format                                          |
 | `tabs`           | tab names — **and their order**, which is load-bearing                             |
 | `columns`        | the column contracts, by key and header                                            |
 | `values`         | the strings the statuses and computed columns use, in formulas and in code         |
-| `mapExport`      | the five popup column labels, the country suffix, the title separator              |
-| `doc`            | the document's file name, title, wording, margins, logo and PDF archive            |
+| `mapExport`      | the five popup column labels, the country suffix, how a pin is named, and the caps  |
+| `doc`            | the document's file name, title, wording, map line, margins, logo and PDF archive  |
 | `weeklyRefresh`  | which day and hour the document rebuilds itself                                    |
 | `properties`     | the *names* of the Script Properties that hold the ids — not the ids themselves    |
 
@@ -60,6 +60,10 @@ rather than a phrase anyone has to word.
 **`mapExport.headers`.** The labels are yours to change; the *count* is not. Exactly five columns are built — title,
 when, venue, organiser, location — and the code refuses to run with a different number rather than mislabelling a popup.
 Removing a column from the export also needs a fresh map layer, not a re-import.
+
+**`mapExport`, the rest of it.** One row per date: a Friday-to-Sunday event is three pins named `12-06-26 Weekender`.
+`titleDateFormat` and `titleJoin` are short because the layer panel truncates, `runDay` is what the popup adds on a run,
+`maxDays` caps a mistyped end date, `importRowLimit` is what one layer takes.
 
 **`style.palette`.** Eleven roles, each with one job, so re-theming is this block and nothing else. The starting scheme
 is cool blue and neutral; the two light fills mean opposite things and are told apart by hue — `infoFill` for "not
@@ -96,7 +100,7 @@ well, and `(not set)` there is correct rather than a fault: a property store bel
 bound script reaches its spreadsheet through `getActive()`. The scaffolding's copy is in that project's own Project
 Settings; the same id sits in the spreadsheet's URL, between `/d/` and `/edit`.
 
-`MAP_ID` holds the `mid` out of the map's URL and nothing more. The `.../maps/d/view?mid=` in front of it is
+`MAP_ID` holds the `mid` out of the map's URL and nothing more. The `.../maps/d/viewer?mid=` in front of it is
 `CONFIG.mapViewBaseUrl`, which is what keeps an `/edit` address and the `&ll=…&z=…` viewport tail out of the document.
 A whole URL pasted in composes into a visibly broken link in `showConfiguration`, not a working one.
 
@@ -111,9 +115,9 @@ The domain shows up in three places, and all three are configuration:
   become *classes* — a config edit.
 - **The lookups.** Two lookup tabs, each keyed by a name column. Anything that is "one row per thing, referenced by name
   from the main tab" fits without code changes.
-- **The outputs.** A map needs one geocodable line per row, which is what `mapExport` builds; a listing needs a date to
-  sort by and group into months, which is what the document does. If your thing has neither, delete the function and the
-  menu shrinks by itself — `onOpen` only offers items whose function exists.
+- **The outputs.** A map needs one geocodable line per row and a date to name it by, which is what `mapExport` builds;
+  a listing needs a date to sort by and group into months, which is what the document does. If your thing has neither,
+  delete the function and the menu shrinks by itself — `onOpen` only offers items whose function exists.
 
 What is *not* configuration: three computed columns with those three meanings (looked-up city, formatted date, publish
 flag) and exactly two lookup tabs. Wanting a third lookup is a code change, and a small one — `columns`, a picker in

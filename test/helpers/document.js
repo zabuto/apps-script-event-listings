@@ -40,7 +40,7 @@ const paragraphModel = text => ({
   spacingAfter: null,
   /** Styling applied to the whole paragraph, which is how every renderer here applies it. */
   style: {},
-  /** `setLinkUrl(from, to, url)` — kept as ranges, because the offsets are the thing being got right. */
+  /** Every `setLinkUrl` as a range, because the offsets are the thing being got right. */
   links: [],
   /** The three-argument `setForegroundColor`, same reason. */
   colorRuns: [],
@@ -76,6 +76,7 @@ function textApi(model) {
     setFontSize: value => { model.style.fontSize = value; return api; },
     setBold: value => { model.style.bold = value; return api; },
     setItalic: value => { model.style.italic = value; return api; },
+    setUnderline: value => { model.style.underline = value; return api; },
     // One argument styles the paragraph; three style a range. Docs overloads it, and `eventRow_`
     // uses both spellings on the same paragraph.
     setForegroundColor: (a, b, c) => {
@@ -86,9 +87,15 @@ function textApi(model) {
       }
       return api;
     },
-    setLinkUrl: (from, to, url) => {
-      checkRange(model, from, to, 'setLinkUrl');
-      model.links.push({ from, to, url });
+    // One argument links the whole text; three link a range. Docs overloads it, and the renderers
+    // use both: a whole sentence for the map line, computed offsets for a handle inside a line.
+    setLinkUrl: (a, b, c) => {
+      if (b === undefined) {
+        model.links.push({ from: 0, to: Math.max(model.text.length - 1, 0), url: a });
+        return api;
+      }
+      checkRange(model, a, b, 'setLinkUrl');
+      model.links.push({ from: a, to: b, url: c });
       return api;
     },
   };

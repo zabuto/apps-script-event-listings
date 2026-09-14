@@ -311,9 +311,9 @@ test('an empty listing says so instead of leaving the heading bare', () => {
 /* ── the map URL ───────────────────────────────────────────────────────────────────────────── */
 
 /*
- * The map id is an installer setting in Script Properties, so the two places that print it need a
- * fixture that sets one. Both states matter: with an id the line carries the composed URL, without
- * one it must not end in a dangling ` · `.
+ * The map id is an installer setting in Script Properties, so anything that prints it needs a
+ * fixture that sets one. Both states matter: with an id the document carries one linked line, and
+ * without one it says nothing about a map at all.
  */
 
 const MAP_ID = '1FakeMapIdForTests';
@@ -324,41 +324,82 @@ function withMapId(mapId) {
   return { properties: { [CONFIG.properties.mapId]: mapId } };
 }
 
-test('the meta line ends with the map URL when a map id is set', () => {
-  const texts = textsOf(onABody(body => src.titleBlock_(body, [listed({})]), withMapId(MAP_ID)));
-  assert.match(texts[2], /^1 events · updated /);
-  assert.ok(texts[2].endsWith(` · ${MAP_URL}`),
-    `the map URL is not on the meta line: "${texts[2]}"`);
-});
-
-test('the meta line has no dangling separator when no map id is set', () => {
-  // Anchored at the end rather than searching for " · ": the line's own separator between the
-  // count and the date is meant to be there.
-  const texts = textsOf(onABody(body => src.titleBlock_(body, [listed({})])));
-  assert.match(texts[2], /^1 events · updated \d{1,2} [A-Za-z]+ \d{4}$/,
-    `the meta line is not exactly "N events · updated <date>": "${texts[2]}"`);
-});
-
-test('the footer credit ends with the map URL when a map id is set', () => {
-  // The footer is what carries the map onto a print-out that has left the building, which is the
-  // whole reason the URL is repeated there.
-  const doc = fakeDocument({ id: DOC_ID });
-  const restore = installFakes({ document: doc, ...withMapId(MAP_ID) });
-  try {
-    src.ensureFooter_(doc);
-  } finally {
-    restore();
+test('the meta line is the count and the date, with a map id set or not', () => {
+  // A reader gets the map from a sentence, not from a URL printed in the header.
+  for (const fixture of [withMapId(MAP_ID), {}]) {
+    const texts = textsOf(onABody(body => src.titleBlock_(body, [listed({})]), fixture));
+    assert.match(texts[2], /^1 events · updated \d{1,2} [A-Za-z]+ \d{4}$/,
+      `the meta line is not exactly "N events · updated <date>": "${texts[2]}"`);
   }
-  assert.strictEqual(doc.model.footer.children[0].text, `${CONFIG.brand.name} · ${MAP_URL}`);
 });
 
-test('a set map id reaches the rendered document as a URL, in both places', () => {
+test('the footer is the credit, with a map id set or not', () => {
+  for (const fixture of [withMapId(MAP_ID), {}]) {
+    const doc = fakeDocument({ id: DOC_ID });
+    const restore = installFakes({ document: doc, ...fixture });
+    try {
+      src.ensureFooter_(doc);
+    } finally {
+      restore();
+    }
+    assert.strictEqual(doc.model.footer.children[0].text, CONFIG.brand.name);
+  }
+});
+
+/** The marker and the sentence, as one line. */
+const MAP_LINE = `${CONFIG.doc.mapLinkIcon} ${CONFIG.doc.mapLink}`;
+
+/** The map line of a rendered document, or `undefined`. */
+const mapLineOf = model => paragraphsIn(model.body).find(p => p.text === MAP_LINE);
+
+test('the map line is marker and sentence, linked over the whole of it', () => {
+  // Link text a reader can act on: "here" on its own says nothing, in a listing or to a screen
+  // reader announcing links.
+  const { model } = rebuild({ properties: { [CONFIG.properties.mapId]: MAP_ID },
+    events: THREE_EVENTS });
+  const line = mapLineOf(model);
+  assert.ok(line, 'the map line is not in the document');
+  assert.deepStrictEqual(line.links, [{ from: 0, to: MAP_LINE.length - 1, url: MAP_URL }]);
+});
+
+test('the marker carries the brand colour, the sentence the link colour', () => {
+  const { model } = rebuild({ properties: { [CONFIG.properties.mapId]: MAP_ID },
+    events: THREE_EVENTS });
+  const line = mapLineOf(model);
+  assert.strictEqual(line.style.color, CONFIG.style.palette.link);
+  assert.deepStrictEqual(line.colorRuns,
+    [{ from: 0, to: CONFIG.doc.mapLinkIcon.length - 1, color: CONFIG.style.palette.primary }]);
+});
+
+test('the map line is not underlined, whatever Docs does to a link', () => {
+  const { model } = rebuild({ properties: { [CONFIG.properties.mapId]: MAP_ID },
+    events: THREE_EVENTS });
+  assert.strictEqual(mapLineOf(model).style.underline, false);
+});
+
+test('the map line sits above the outro, as the last thing before it', () => {
+  const { model } = rebuild({ properties: { [CONFIG.properties.mapId]: MAP_ID },
+    events: THREE_EVENTS });
+  const texts = paragraphsIn(model.body).map(paragraph => paragraph.text);
+  assert.strictEqual(texts[texts.indexOf(MAP_LINE) + 1], CONFIG.doc.outro);
+});
+
+test('a set map id reaches the rendered document once, as that line', () => {
   // End to end, on the text a reader receives rather than on one renderer's arguments.
   const { model } = rebuild({ properties: { [CONFIG.properties.mapId]: MAP_ID },
     events: THREE_EVENTS });
   const printed = documentText(model).split('\n').filter(line => line.includes(MAP_URL));
-  assert.strictEqual(printed.length, 2,
-    `the map URL should appear on the meta line and in the footer, found ${printed.length}`);
+  assert.strictEqual(printed.length, 0, 'the URL itself is printed, rather than carried by a link');
+  assert.ok(documentText(model).includes(CONFIG.doc.mapLink), 'the map line is missing');
+});
+
+test('no map id leaves the document saying nothing about a map', () => {
+  const { model } = rebuild({ events: THREE_EVENTS });
+  const text = documentText(model);
+  assert.strictEqual(text.includes(CONFIG.doc.mapLink), false,
+    'a line about a map was written with no map to link to');
+  assert.strictEqual(paragraphsIn(model.body).some(p => p.links.some(link =>
+    String(link.url).includes('/maps/'))), false);
 });
 
 test('a map id that is absent, empty or blank omits the line rather than composing a URL', () => {
@@ -375,12 +416,12 @@ test('a map id that is absent, empty or blank omits the line rather than composi
   }
 });
 
-test('the composed map URL is the view form, never edit', () => {
+test('the composed map URL is the viewer form, never edit', () => {
   // The URL reaches every reader and every downloaded PDF, so an edit address hands them the map's
   // editor. Storing the id alone is what puts that shape out of reach.
   const restore = installFakes(withMapId(MAP_ID));
   try {
-    assert.strictEqual(src.mapUrl_(), `https://www.google.com/maps/d/view?mid=${MAP_ID}`);
+    assert.strictEqual(src.mapUrl_(), `https://www.google.com/maps/d/viewer?mid=${MAP_ID}`);
   } finally {
     restore();
   }
@@ -393,7 +434,7 @@ test('a whole URL pasted into the map id property cannot compose into a working 
     const url = src.mapUrl_();
     assert.strictEqual(url.includes('/edit'), false, `an edit address was published: "${url}"`);
     assert.ok(url.startsWith(CONFIG.mapViewBaseUrl),
-      `the composed URL does not keep the view form: "${url}"`);
+      `the composed URL does not keep the viewer form: "${url}"`);
   } finally {
     restore();
   }
@@ -692,12 +733,12 @@ test('a row the sheet calls upcoming but cannot be sorted is reported as a misma
   assert.match(report, new RegExp(`no real date in ${dateStart} is the usual cause`));
 });
 
-test('the venue-less events are named, because that is why the map is shorter', () => {
+test('the venue-less events are named, because a pin cannot say where they are', () => {
   const { report } = rebuild({
     events: [event({ dateStart: dayIn(1, 5), title: 'Roomless', when: 'soon' })],
   });
   assert.match(report, new RegExp(`Listed as "${CONFIG.doc.venueTba}": Roomless`));
-  assert.match(report, /shorter than this document by exactly these/);
+  assert.match(report, /counts dates rather than events/);
 });
 
 test('the report counts how many events got a link', () => {

@@ -157,24 +157,6 @@ section('the scaffolding project', function bootstrapProject() {
     `${seedEvents_().length} events, all cross-references resolve`);
 });
 
-/* ── the bound project ───────────────────────────────────────────────────────────────────── */
-
-section('the bound project', function boundProject() {
-  // Nothing is cleaned up between the two projects, and nothing needs to be. `load()` rewrites
-  // `const` to `var`, and a direct eval in a non-strict *function* puts `var` into that function's
-  // scope rather than onto `global` — so this `CONFIG` and the scaffolding's are separate bindings
-  // in separate calls. That is what keeps them apart, not any deletion: the two projects declare
-  // a set of identically named helpers between them, and whichever loaded second would otherwise win.
-  eval(load('src/Config.gs'));
-  eval(load('src/Code.gs'));
-
-  console.log('map export');
-  check('map condition', mapExportCondition_());
-  const formula = check('map formula', mapExportFormula_());
-  console.log(`  ${CONFIG.mapExport.headers.join(' | ')}`);
-  console.log(`  ${formula.length} characters`);
-});
-
 console.log('');
 if (problems.length) {
   console.log(`${problems.length} problem(s):`);

@@ -78,14 +78,14 @@ when it happens, and is where that reasoning belongs.
    `bootstrap/Common.gs` and `src/Code.gs` each carry their own copy of a set of helpers.
    `test/cross-project-helpers.test.js` holds the list, in `EXPECTED_SHARED`, and compares them by behaviour *and* by
    source; a difference that is deliberate goes in its `INTENDED_DIFFERENCES` list, with the reason.
-4. **Address columns by `key`**, through `columnIndex_` / `columnLetter_` / `colRange_` / `colLookup_`, plus `colFull_`
-   in `bootstrap/`. In `src/`, read rows through `table_`, which refuses a tab whose header row no longer matches the
-   contract. Never by letter or position: a shifted column then answers wrongly instead of failing.
+4. **Address columns by `key`**: in `bootstrap/` through `columnIndex_` / `columnLetter_` / `colRange_` / `colLookup_` /
+   `colFull_`, in `src/` through `table_`, which refuses a tab whose header row no longer matches the contract. Never by
+   letter or position: a shifted column then answers wrongly instead of failing.
 5. **The map export tab stays first.**
 6. **Write formulas US-style** with `,` and pass them through `setFormula_`, which translates to the sheet's separator.
-7. **Do not rewrite the flat map-export or dashboard formulas as `LET`.** `dashboardFilterLet_` is kept solely as the
-   counter-example `probeFilterTerms_` renders beside the shipped spelling on every `setupDashboard` run; nothing else
-   may adopt that spelling.
+7. **Do not rewrite the flat dashboard filter as `LET`.** `dashboardFilterLet_` is the counter-example
+   `probeFilterTerms_` renders beside the shipped spelling on every `setupDashboard` run; nothing else may adopt it.
+   It is also why the map export is values: **one row per date** needs the spellings that collapse there.
 8. **No output may read a `(private)` column** — not the map, the document, the dashboard, or the `When` string.
 9. **A writer that clears a tab reads it first.** `seedSheet` regenerates the data tabs from `bootstrap/SeedData.gs`, so
    anything typed into a column the seed does not own — private notes above all — is harvested before the clear and

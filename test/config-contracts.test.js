@@ -72,7 +72,7 @@ test('the (private) column is the last non-computed column on every tab that has
 });
 
 test('the map export builds exactly five columns', () => {
-  // `mapExportFormula_` refuses to run with any other number rather than mislabelling a popup, and
+  // `mapExportRows_` refuses to run with any other number rather than mislabelling a popup, and
   // every column costs a labelled row in every pin.
   assert.strictEqual(CONFIG.mapExport.headers.length, 5);
 });

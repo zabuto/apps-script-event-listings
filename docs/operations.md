@@ -9,7 +9,10 @@ Each section says whose job it is. *Maintainers* have edit access to the spreads
 in the lookups is *refused* by the dropdown — add it to its own tab first. Never type a city; it fills itself in.
 
 **After changing anything the map shows.** Menu → **Refresh map export**, read the dialog, then re-import the layer in
-My Maps. The export tab is a live formula and is already current; the map is the part that is not.
+My Maps. The tab holds what that run computed, so both steps are needed: refresh, then import.
+
+**What the map holds.** One pin per **date**, named `13-06-26 Weekender`. An event running over three days is three
+pins at one address, and the popup says which day of the run each is.
 
 **Re-importing the layer.** In My Maps: the layer's ⋮ menu → **Delete this layer**, then **Add layer** → **Import** →
 the spreadsheet → position column `Location`, title column `Title`. Deleting first is not optional: a layer keeps its
@@ -76,8 +79,8 @@ Three things it cannot check, because no script can see them:
 There are no backups. This codebase does not make one, does not keep one, and cannot restore one:
 
 - **The outputs are not copies.** The agenda document is cleared and rebuilt from scratch on every run and holds only
-  upcoming events. The map export is a formula holding only events with a venue. Neither has ever contained a past
-  event, a private note, or anything you deleted.
+  upcoming events. The map export is rewritten the same way, and holds only the dates still ahead of events that have a
+  venue. Neither has ever contained a past event, a private note, or anything you deleted.
 - **`captureSheetData` is a snapshot, not a backup.** It writes the events and the hand-researched venue and organiser
   columns into `SeedData.gs` as code — enough for `seedSheet` to rebuild a sheet that looks like the one you had — but
   only for the moment you ran it, and only if you then paste and commit the result. Nothing schedules it.
@@ -98,9 +101,10 @@ project, so they are the installer's.
 |---|---|---|
 | Dashboard is blank or `#REF!` | an edit landed on top of the results | `repairDashboard` |
 | A hygiene check reads empty | the check formula was overwritten | `setupChecks` |
-| Export tab has `#` cells | a lookup tab's headers moved | fix the headers, then **Refresh map export** |
+| Export tab says DO NOT IMPORT | a cell holds something other than what the run computed | read the dialog — it names the count |
 | Export tab is empty | nothing is upcoming, or nothing upcoming has a venue | check the dialog — it says which |
-| Document has fewer events than the export | it has *more*: venue-to-be-announced rows are off the map | expected |
+| Export tab is out of date | it holds the last refresh, not the sheet | **Refresh map export** |
+| Export has more rows than the document has lines | a run is one row per date, the document one line per event | expected |
 | Document and sheet disagree on the count | a row reads upcoming but has no real date to sort by | fix the date |
 | Menu item answers `Script function not found` | the bound project was not pushed | `cd src && clasp push -f`, reload |
 | `Script property … is not set` | the bound project has no ids | [`getting-started.md`](getting-started.md), step 6 |

@@ -174,13 +174,14 @@ function seedEvents_() {
     // ── upcoming: these are what the map, the document and the dashboard publish
     [inDays_(3), '', 'Open Stage', "'t Blauwe Theehuis", 'Studio Zuid', status.confirmed, ''],
 
-    // One title, three cities, three dates. On the map these become "Touring Revue — Zaandam" and so
-    // on, because the layer panel lists titles and nothing else; in the document they are three
-    // separate lines under their own months. It is also what makes the city filter worth having.
+    // One title, three cities, three dates. On the map the three pins are told apart by the date
+    // their name leads with; in the document they are three lines under their own months. It is also
+    // what makes the city filter worth having.
     [inDays_(7), '', 'Touring Revue', 'Zaantheater', 'Bluebird Revue', status.confirmed, ''],
     [inDays_(9), '', 'Touring Revue', 'Theater De Omval', 'Bluebird Revue', status.confirmed, ''],
     [inDays_(12), '', 'Touring Revue', 'Schouwburg Amstelveen', 'Bluebird Revue', status.confirmed, ''],
 
+    // Two dates, so two pins at one coordinate: the map lists it twice, named for each day.
     [inDays_(10), inDays_(11), 'Two-Day Conference', 'RAI Amsterdam', 'Company Example', status.confirmed, ''],
     // Open air, and in a different municipality from its own name — see seedVenues_.
     [inDays_(18), inDays_(19), 'Midsummer Night', 'Amsterdam Bostheater', 'Aurora Collective', status.confirmed, ''],
@@ -195,8 +196,8 @@ function seedEvents_() {
     [inDays_(28), '', 'Autumn Revue', 'Koninklijk Theater Carré', 'Bluebird Revue', status.confirmed, ''],
     [inDays_(35), '', 'Late Show', 'Beurs van Berlage', 'Aurora Collective', status.confirmed, ''],
 
-    // Two venues carrying two upcoming events each. The export writes a row per event, so both pins
-    // share one coordinate and the layer panel tells them apart by title; the document lists them as
+    // Two venues carrying two upcoming events each. The export writes a row per date, so both pins
+    // share one coordinate and the layer panel tells them apart by name; the document lists them as
     // two lines in date order, never grouped under their venue.
     [inDays_(16), '', 'Youth Matinee', 'Zaantheater', 'Northside Youth Theatre', status.confirmed, ''],
     [inDays_(24), '', 'Makers Market', 'Beurs van Berlage', 'Studio Zuid', status.confirmed, ''],

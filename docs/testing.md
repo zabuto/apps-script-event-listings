@@ -32,10 +32,10 @@ projects declare a set of identically named helpers between them, and in one pro
 |---|---|
 | `config-contracts.test.js` | tab order, computed block last, `(private)` last, five map headers, unique keys |
 | `build-steps.test.js` | every step being in `setupAll`, and what is deliberately kept out of it |
-| `privacy.test.js` | the `(private)` column rule made mechanical: no output formula reads one |
+| `privacy.test.js` | the `(private)` column rule made mechanical: no formula reads one, and no map row carries one |
 | `formula-dialect.test.js` | separator translation, `quoteLiteral_`, `literal_`, `countFilled_` |
 | `columns.test.js` | addressing a column by `key`, letters past `Z`, tab-name quoting |
-| `map-export.test.js` | the flat spelling that works, the `IFERROR`/`COUNTIFS` guards, the geocodable line |
+| `map-export.test.js` | one row per date, how a pin is named and what it says, and the geocodable line |
 | `map-refresh.test.js` | what `refreshMapExport` writes to the tab, and the report that refuses an unsafe import |
 | `upcoming-events.test.js` | the agenda's cutoff agreeing with the sheet under any script time zone |
 | `cross-project-helpers.test.js` | the duplicated helpers not drifting between the projects, and the list of them |
@@ -61,8 +61,8 @@ Worth knowing, so a green suite is not read as more than it is:
   name from it should mean a test now exists.
 - **How a document *looks*** — the renderers are checked for what they put on the page and how they style it, which is
   not the same as the page being well laid out. Only Docs answers that.
-- **`notify_` and `argSeparator_`** across the two projects: one needs a UI, the other writes a probe tab.
-  `cross-project-helpers.test.js` says so out loud rather than leaving the gap implied.
+- **`notify_`** across the two projects: it needs a UI, so it cannot be compared by calling it, and its source
+  comparison is exempted. `cross-project-helpers.test.js` says so out loud rather than leaving the gap implied.
 
 ## How the harness works
 
@@ -75,7 +75,7 @@ module boundaries. It uses `new Function` rather than `eval` so each call gets a
 ```js
 const {loadProject} = require('./helpers/project');
 const src = loadProject('src');          // or 'bootstrap'
-src.mapExportFormula_();
+src.mapExportRows_();
 ```
 
 **`document.js`** is `DocumentApp`, built the other way round from the rest: the renderers return nothing and answer
@@ -163,7 +163,7 @@ than merely making the dialog longer.
 
 It stays a script and is also part of the suite: `check-formulas.test.js` runs it and fails on its exit code. Run it
 directly when you want to *read* what it prints — every formula the build generates, the column letters, the picker
-lists, the hygiene checks, the dashboard columns, the protected ranges, the seed counts, and the map export's size:
+lists, the hygiene checks, the dashboard columns, the protected ranges, and the seed counts:
 
 ```sh
 node scripts/check-formulas.js

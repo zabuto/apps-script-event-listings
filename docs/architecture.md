@@ -19,7 +19,7 @@ A Google Sheet is the datasource, and three outputs read from it:
               │                     │                     │
       ┌───────┴───────┐    ┌────────┴────────┐   ┌────────┴─────────┐
       │   Map Export  │    │    Dashboard    │   │ Agenda document  │
-      │  (a formula)  │    │   (a formula)   │   │ (rebuilt weekly) │
+      │ (row per date)│    │   (a formula)   │   │ (rebuilt weekly) │
       └───────┬───────┘    └─────────────────┘   └────────┬─────────┘
               │                                           │
      imported by hand into                        read-only link, and
@@ -37,13 +37,13 @@ Three roles, because almost every decision below turns on which one is meant:
 
 Three properties hold the whole design together:
 
-**One source for every derived fact.** The city is looked up from the venue, never typed. The human-readable date is one
-column, reused verbatim by all three outputs, so they cannot spell a date differently. And *does this publish?* is a
+**One source for every derived fact.** The city is looked up from the venue, never typed. *Does this publish?* is a
 single column — the map, the document, and the dashboard all read it, so they cannot disagree about what is upcoming.
+The dates and names a reader sees come from `Config.gs`, so the three outputs cannot spell a date differently.
 
-**Formulas rather than snapshots.** The map export and the dashboard are live formulas: they recompute as the events
-change and never need refreshing to be correct. The scripts exist to put them *back* after a maintainer overwrites one,
-and to report whether what they computed is fit to publish.
+**A formula where the sheet can hold the answer.** The dashboard and the computed columns recompute as the events
+change; the scripts put one *back*. The map export is the exception: one row per **date** needs the spellings that
+collapse here ([`gotchas.md`](gotchas.md)), so its rows are written as values.
 
 **A private column is never read by an output** — not by the map, not the document, not even the `When` string. So what
 leaves the sheet is decided per column, in the contract; who may open the sheet in the first place is decided in Drive,
@@ -61,8 +61,8 @@ by you, not anywhere in this code.
 
 The split is not tidiness. A container-bound project cannot exist before the spreadsheet does, so the scaffolding has to
 be standalone — and a bound project is part of the file, so anything maintainers must be able to repair has to live
-there. That is why the map export formula is in `src/`: a formula authored only in a project that never leaves your
-Drive cannot be put back by a maintainer.
+there. That is why the map export is built in `src/`: an export written only by a project that never leaves your Drive
+cannot be rebuilt by a maintainer.
 
 `shared/Config.gs` is copied into both by `scripts/sync-config.sh`. Two projects cannot share a file, and the
 alternative — two configs that drift — is worse than a copy with a sync script. Each project's `appsscript.json` is

@@ -11,24 +11,20 @@ US-style and passed through `setFormula_()`, which translates only separators ou
 inside `", Netherlands"` survives. The separator is *measured* on a throwaway tab and cached per locale, never assumed:
 `argSeparator_()`.
 
-**`LET` collapses arrays, and `IFERROR` hides it.** The tidy spelling of both the map export and the dashboard filter —
-one `LET`, names holding arrays, `INDEX` or `XLOOKUP` over them — returns the right row count with `#VALUE!` in every
-looked-up column, or `#N/A` for the whole thing. One term collapsing to its first element zeroes the entire product, and
-the `IFERROR` wrapper presents that as something tidy. Both formulas are therefore written flat, with direct range
-references, and every lookup sits inside a `LAMBDA` where its argument is a single value.
+**`LET` collapses arrays, and `IFERROR` hides it.** The tidy dashboard filter — one `LET`, names holding arrays,
+`XLOOKUP` over them — returns the right row count with `#VALUE!` in every looked-up column. One term collapsing to its
+first element zeroes the product, which `IFERROR` presents as tidy. Hence the flat filter.
 
-*What it looks like when it happens* differs by output, which is most of why it is hard to place. The dashboard's
-wrapper falls back to `"no matches"`, so a collapsed filter reads as *nothing matched your dropdowns* —
-indistinguishable from a Scope and City that genuinely select nothing. The map export's wrapper falls back to `""`, so
-the tab is simply **empty**, exactly what a sheet with nothing upcoming looks like. Neither presentation says *error*,
-and the row count is right in both, so counting rows will not tell you either.
+*What it looks like when it happens*: the wrapper falls back to `"no matches"`, so a collapsed filter reads as *nothing
+matched your dropdowns*. Nothing says *error*, and the row count is right, so counting rows will not tell you.
 
-*Only the dashboard proves it on every run.* `dashboardFilterLet_()` is kept solely as the counter-example, and
-`probeFilterTerms_()` renders it beside the shipped spelling on every `setupDashboard` run, so the difference stays
-visible rather than becoming folklore. The map export has no `LET` spelling kept and no probe of its own:
-`refreshMapExport` instead reads back every computed cell of every row, counts the ones starting with `#`, and says **DO
-NOT IMPORT** when it finds any. If you are debugging the map export, that report is the instrument — not the tab, which
-looks fine while being wrong.
+*It is proved on every run.* `dashboardFilterLet_()` is kept solely as the counter-example, and `probeFilterTerms_()`
+renders it beside the shipped spelling on every `setupDashboard` run, so the difference stays visible rather than
+becoming folklore.
+
+This is also why the map export is not a formula: one row per date needs the shapes that collapse here. Instead
+`refreshMapExport` writes values, reads the tab back and compares it cell by cell, saying **DO NOT IMPORT** on a cell
+that differs. That report is the instrument.
 
 **A conditional format rule may not reference another sheet.** The sheet rejects the rule when it is *set*, not when it
 is evaluated: `Conditional format rule cannot reference another sheet`. `INDIRECT` resolves the name at evaluation time,
@@ -169,17 +165,22 @@ again.
 column costs a line in every popup. That is why the city is appended to the title instead of being its own column — and
 why the export is five columns, not the eleven the sheet has.
 
-**The layer panel lists titles and nothing else.** A touring show makes that list unreadable: a dozen identical rows
-with no way to tell one town from the next. Hence the city in the title.
+**The layer panel lists titles and nothing else, and truncates them.** Hence a name of short date plus title, with no
+punctuation between: the date is what tells apart the pins of one run, which share a coordinate. The city is the last
+field of `Location`.
 
 **A row with no address still maps** — onto the city centre. Not a failure, and not obvious either, so
 `refreshMapExport` names every event whose pin is approximate.
 
-**Only a URL carrying a scheme gets linkified.** `https://` is added in the formula when the stored value does not have
-it, because URL columns tend to be filled in as bare hosts.
+**Only a URL carrying a scheme gets linkified.** `https://` is added when the stored value does not have it, because URL
+columns tend to be filled in as bare hosts.
 
-**With nothing upcoming, `FILTER` returns `#N/A`** and the import source becomes an error rather than an empty tab.
-Hence the `COUNTIFS` guard around the whole export formula.
+**A layer imports 2,000 rows.** The export holds one row per date, so a busy year reaches that, and the import takes the
+first 2,000 without saying what it dropped. `refreshMapExport` compares its row count against
+`CONFIG.mapExport.importRowLimit` and reports it.
+
+**`setValues` decides what a value *is*.** A string opening with `=` is stored as a formula, and a title is whatever a
+maintainer typed. So the export block is plain text (`@`) before the write, and read back after it.
 
 ## Privacy
 
@@ -202,8 +203,6 @@ the thing a rule happens to be looking at when somebody extends it into an outpu
 **A city-only venue with a street number is the shape a leak takes.** It goes public at the next map refresh, so
 `checkData` reports it as an issue rather than a note.
 
-**The document's meta line and footer carry the map address into every downloaded PDF.** An `/edit` URL is not a link
-to the map, it is an invitation to edit it. That is why the `MAP_ID` property holds the `mid` alone and the code
-composes the `/view` address around it: the wrong shape has nowhere to enter from. It also leaves the `&ll=…&z=…` tail
-a browser adds no way in — that is the viewport somebody happened to be looking at, frozen into a document that is
-rebuilt weekly.
+**The document's map line carries an address into every downloaded PDF.** An `/edit` URL is an invitation to edit the
+map. So `MAP_ID` holds the `mid` alone and the code composes the `/viewer` address around it, which leaves no way in for
+the wrong shape or the `&ll=…&z=…` tail.
