@@ -692,12 +692,12 @@ test('a row the sheet calls upcoming but cannot be sorted is reported as a misma
   assert.match(report, new RegExp(`no real date in ${dateStart} is the usual cause`));
 });
 
-test('the venue-less events are named, because that is why the map is shorter', () => {
+test('the venue-less events are named, because a pin cannot say what the document can', () => {
   const { report } = rebuild({
     events: [event({ dateStart: dayIn(1, 5), title: 'Roomless', when: 'soon' })],
   });
   assert.match(report, new RegExp(`Listed as "${CONFIG.doc.venueTba}": Roomless`));
-  assert.match(report, /shorter than this document by exactly these/);
+  assert.match(report, /It is in here and on no map/);
 });
 
 test('the report counts how many events got a link', () => {

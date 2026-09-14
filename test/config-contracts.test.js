@@ -10,7 +10,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { loadProject, root } = require('./helpers/project');
 
-const CONFIG = loadProject('src').CONFIG;
+const src = loadProject('src');
+const CONFIG = src.CONFIG;
 const TABS_WITH_COLUMNS = ['events', 'venues', 'organisers'];
 
 test('the map export tab is first, because My Maps imports sheet 1', () => {
@@ -71,10 +72,10 @@ test('the (private) column is the last non-computed column on every tab that has
   }
 });
 
-test('the map export builds exactly five columns', () => {
+test('there is a header for every column the map export builds', () => {
   // `mapExportFormula_` refuses to run with any other number rather than mislabelling a popup, and
   // every column costs a labelled row in every pin.
-  assert.strictEqual(CONFIG.mapExport.headers.length, 5);
+  assert.strictEqual(CONFIG.mapExport.headers.length, src.mapExportColumns_().length);
 });
 
 test('no map export header names a private column', () => {

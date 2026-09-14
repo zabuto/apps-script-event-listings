@@ -30,12 +30,12 @@ projects declare a set of identically named helpers between them, and in one pro
 
 | File | What it holds the code to |
 |---|---|
-| `config-contracts.test.js` | tab order, computed block last, `(private)` last, five map headers, unique keys |
+| `config-contracts.test.js` | tab order, computed block last, `(private)` last, a header per map column, unique keys |
 | `build-steps.test.js` | every step being in `setupAll`, and what is deliberately kept out of it |
 | `privacy.test.js` | the `(private)` column rule made mechanical: no output formula reads one |
 | `formula-dialect.test.js` | separator translation, `quoteLiteral_`, `literal_`, `countFilled_` |
 | `columns.test.js` | addressing a column by `key`, letters past `Z`, tab-name quoting |
-| `map-export.test.js` | the flat spelling that works, the `IFERROR`/`COUNTIFS` guards, the geocodable line |
+| `map-export.test.js` | the flat spelling, the guards, a row per venue, the column order, and each scan made once |
 | `map-refresh.test.js` | what `refreshMapExport` writes to the tab, and the report that refuses an unsafe import |
 | `upcoming-events.test.js` | the agenda's cutoff agreeing with the sheet under any script time zone |
 | `cross-project-helpers.test.js` | the duplicated helpers not drifting between the projects, and the list of them |

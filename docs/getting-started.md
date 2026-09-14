@@ -152,7 +152,7 @@ The map is the one part that is not scripted, because My Maps has no API:
 
 1. <https://www.google.com/mymaps> → **Create a new map**.
 2. **Import** → the spreadsheet → it imports the **first** tab, which is the export tab.
-3. Position column: **Location**. Title column: **Title**.
+3. Position column: **Location**. Title column: **Venue**.
 4. Style the pins and name the layer, then set the map's sharing to whatever it should be — a public link, a named list,
    or nothing yet. My Maps has no API, so no part of this codebase can read or change that.
 5. Copy the `mid=` value out of the map's URL — the id alone, without the `&ll=…&z=…` tail the browser appends — and

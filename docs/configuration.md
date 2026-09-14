@@ -27,7 +27,7 @@ the next sync silently overwrites your change.
 | `tabs`           | tab names — **and their order**, which is load-bearing                             |
 | `columns`        | the column contracts, by key and header                                            |
 | `values`         | the strings the statuses and computed columns use, in formulas and in code         |
-| `mapExport`      | the five popup column labels, the country suffix, the title separator              |
+| `mapExport`      | the four popup column labels, the country suffix, the title separator              |
 | `doc`            | the document's file name, title, wording, margins, logo and PDF archive            |
 | `weeklyRefresh`  | which day and hour the document rebuilds itself                                    |
 | `properties`     | the *names* of the Script Properties that hold the ids — not the ids themselves    |
@@ -57,9 +57,14 @@ cell, read by the conditional format, by the address worklist and by `checkData`
 conclusions about the same venue. See [`gotchas.md`](gotchas.md#privacy) for why a decision a check acts on is a value
 rather than a phrase anyone has to word.
 
-**`mapExport.headers`.** The labels are yours to change; the *count* is not. Exactly five columns are built — title,
-when, venue, organiser, location — and the code refuses to run with a different number rather than mislabelling a popup.
-Removing a column from the export also needs a fresh map layer, not a re-import.
+**`mapExport.headers`.** The labels are yours to change; the *count* is not. The columns are the ones
+`mapExportColumns_` names — venue, events, location, website — and the code refuses to run with a different number
+rather than mislabelling a popup. Removing a column from the export also needs a fresh map layer, not a re-import.
+`Website` is empty for a venue with no site, and an empty column is a labelled row in that pin all the same.
+
+**A row is a venue, not an event.** Events in one room geocode to one point, and My Maps draws those pins on top of one
+another with only the top one clickable. The export groups by venue and lists the events, oldest first, in the `Events`
+column of that one pin.
 
 **`style.palette`.** Eleven roles, each with one job, so re-theming is this block and nothing else. The starting scheme
 is cool blue and neutral; the two light fills mean opposite things and are told apart by hue — `infoFill` for "not
@@ -111,7 +116,7 @@ The domain shows up in three places, and all three are configuration:
   become *classes* — a config edit.
 - **The lookups.** Two lookup tabs, each keyed by a name column. Anything that is "one row per thing, referenced by name
   from the main tab" fits without code changes.
-- **The outputs.** A map needs one geocodable line per row, which is what `mapExport` builds; a listing needs a date to
+- **The outputs.** A map needs a geocodable line per place, which is what `mapExport` builds; a listing needs a date to
   sort by and group into months, which is what the document does. If your thing has neither, delete the function and the
   menu shrinks by itself — `onOpen` only offers items whose function exists.
 

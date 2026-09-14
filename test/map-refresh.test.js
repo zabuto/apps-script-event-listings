@@ -36,9 +36,15 @@ const PUBLISHED = event({
 const PARADISO = venue({ name: 'Paradiso', address: 'Weteringschans 6', postcode: '1017 SG',
   city: 'Amsterdam', status: venueStatus.active });
 
-/** What the sheet computes for `PUBLISHED`, in the five columns the formula builds. */
-const ONE_GOOD_ROW = [['Open Stage — Amsterdam', 'Fri 5 Jun 2026', 'Paradiso', '',
-  'Weteringschans 6, 1017 SG Amsterdam, Netherlands']];
+/** A second event in the same room, which is one pin and two lines in its popup. */
+const SAME_ROOM = event({
+  dateStart: new Date(2026, 5, 6), title: 'Late Set', venue: 'Paradiso', city: 'Amsterdam',
+  status: status.confirmed, upcoming: scope.upcoming, when: 'Sat 6 Jun 2026',
+});
+
+/** What the sheet computes for `PUBLISHED`, in the columns the formula builds. */
+const ONE_GOOD_ROW = [['Paradiso — Amsterdam', 'Fri 5 Jun 2026 · Open Stage',
+  'Weteringschans 6, 1017 SG Amsterdam, Netherlands', 'https://paradiso.nl']];
 
 /**
  * Runs `refreshMapExport` and hands back the tab it wrote and the one report it would have shown.
@@ -114,8 +120,8 @@ test('a column left over past the contract is cleared, its header included', () 
     headers: [...CONFIG.mapExport.headers, 'Retired Field', 'Older Still'],
   });
   assert.match(report, /Cleared 2 column\(s\) past the contract, headers included/);
+  assert.strictEqual(sheet.grid[0][4], '', 'the stale header is still there');
   assert.strictEqual(sheet.grid[0][5], '', 'the stale header is still there');
-  assert.strictEqual(sheet.grid[0][6], '', 'the stale header is still there');
 });
 
 /* ── the report, which is the whole of what a maintainer acts on ────────────────────────────── */
@@ -130,7 +136,7 @@ test('an error cell in any column stops the import, not only in the first', () =
   // A spilled formula fails per column, so reading `A2` alone can find the title column computing
   // perfectly while the next two are #VALUE! on every row.
   const { report } = refresh({
-    spill: [['Open Stage — Amsterdam', 'Fri 5 Jun 2026', '#VALUE!', '', '#REF!']],
+    spill: [['Paradiso — Amsterdam', '#VALUE!', '#REF!', 'https://paradiso.nl']],
   });
   assert.match(report, /1 row\(s\), 1 expected, 2 error cell\(s\) ⚠/);
   assert.match(report, /DO NOT IMPORT this tab — the map would take the errors as place names/);
@@ -138,17 +144,73 @@ test('an error cell in any column stops the import, not only in the first', () =
 
 test('a row count that disagrees with the events tab stops the import', () => {
   // Both numbers come from the same run, so a disagreement means the tab computed something other
-  // than what publishes — not visible in any single cell.
-  const second = event({ dateStart: new Date(2026, 5, 6), title: 'Late Set', venue: 'Paradiso',
-    city: 'Amsterdam', status: status.confirmed, upcoming: scope.upcoming });
-  const { report } = refresh({ events: [PUBLISHED, second], spill: ONE_GOOD_ROW });
+  // than what publishes — not visible in any single cell. Two venues, because the count is venues.
+  const elsewhere = event({ dateStart: new Date(2026, 5, 6), title: 'Late Set',
+    venue: 'De Nieuwe Anita', city: 'Amsterdam', status: status.confirmed,
+    upcoming: scope.upcoming });
+  const { report } = refresh({ events: [PUBLISHED, elsewhere], spill: ONE_GOOD_ROW });
   assert.match(report, /1 row\(s\), 2 expected, 0 error cell\(s\) ⚠/);
   assert.match(report, /DO NOT IMPORT/);
+});
+
+/* ── one pin per venue ──────────────────────────────────────────────────────────────────────── */
+
+test('two events in one room are one expected row, and the report says so', () => {
+  // The count the import is refused on: counting events would refuse the tab the formula builds.
+  const { report } = refresh({
+    events: [PUBLISHED, SAME_ROOM],
+    spill: [['Paradiso — Amsterdam',
+      '• Fri 5 Jun 2026 · Open Stage\r\n• Sat 6 Jun 2026 · Late Set',
+      'Weteringschans 6, 1017 SG Amsterdam, Netherlands', 'https://paradiso.nl']],
+  });
+  assert.match(report, /1 row\(s\), 1 expected, 0 error cell\(s\) ✓/);
+  assert.match(report, /One pin per venue: 2 upcoming event\(s\) at 1 venue\(s\)/);
+  assert.strictEqual(report.includes('DO NOT IMPORT'), false,
+    'a tab holding one pin for two events at one venue was called unimportable');
+});
+
+test('two spellings of one venue are one expected row, as the sheet resolves them', () => {
+  // The formula resolves every venue through the lookup before `UNIQUE` compares it, and the lookup
+  // folds case as every name resolution in this sheet does. A count that does not fold it refuses an
+  // importable tab the day someone types a venue in lower case.
+  const { report } = refresh({
+    events: [PUBLISHED, event({ dateStart: new Date(2026, 5, 6), title: 'Late Set',
+      venue: 'paradiso', city: 'Amsterdam', status: status.confirmed, upcoming: scope.upcoming })],
+  });
+  assert.match(report, /1 row\(s\), 1 expected/);
+});
+
+test('two spellings of a venue the venues tab does not hold are two expected rows', () => {
+  // The lookup only folds case for a name it resolves. An unlisted one keeps the spelling it was
+  // typed in and `UNIQUE` compares those as typed, so two pins on one coordinate is what the formula
+  // built; folding them together refuses that tab over a row `Check data` already names.
+  const unlisted = spelling => event({ dateStart: new Date(2026, 5, 5), title: `At ${spelling}`,
+    venue: spelling, city: 'Amsterdam', status: status.confirmed, upcoming: scope.upcoming });
+  const { report } = refresh({
+    events: [unlisted('The Back Room'), unlisted('the back room')],
+    spill: [
+      ['The Back Room — Amsterdam', 'Fri 5 Jun 2026 · At The Back Room',
+        'The Back Room, Amsterdam, Netherlands', ''],
+      ['the back room — Amsterdam', 'Fri 5 Jun 2026 · At the back room',
+        'the back room, Amsterdam, Netherlands', ''],
+    ],
+  });
+  assert.match(report, /2 row\(s\), 2 expected, 0 error cell\(s\) ✓/);
+  assert.strictEqual(report.includes('DO NOT IMPORT'), false,
+    'a tab holding the pins the formula builds was called unimportable');
 });
 
 test('a tab that computed nothing at all is reported as nothing, not as an error', () => {
   const { report } = refresh({ events: [], spill: [] });
   assert.match(report, /0 row\(s\), 0 expected, 0 error cell\(s\) ✓/);
+});
+
+test('an empty tab is not explained as no events at no venues', () => {
+  // The line exists to stop a row count being read as an event count. With nothing placed there is
+  // no count to explain, and the line above already says the tab is empty.
+  const { report } = refresh({ events: [], spill: [] });
+  assert.strictEqual(report.includes('One pin per venue'), false,
+    'an empty tab was explained as one pin per venue for no venues');
 });
 
 /* ── the two venue-less lists, which mean opposite things ───────────────────────────────────── */
@@ -215,10 +277,11 @@ test('a venue with no address is named, because its pin lands on the city centre
       venue: 'The Back Room', city: 'Amsterdam', status: status.confirmed,
       upcoming: scope.upcoming })],
     venues: [venue({ name: 'The Back Room', city: 'Amsterdam', status: venueStatus.active })],
-    spill: [['House Concert — Amsterdam', 'Fri 5 Jun 2026', 'The Back Room', '',
-      'The Back Room, Amsterdam, Netherlands']],
+    spill: [['The Back Room — Amsterdam', 'Fri 5 Jun 2026 · House Concert',
+      'The Back Room, Amsterdam, Netherlands', '']],
   });
-  assert.match(report, /Geocoding by venue name, so the pin lands on the city centre: House Concert/);
+  assert.match(report,
+    /Geocoding by venue name, so the pin lands on the city centre: The Back Room/);
 });
 
 test('a venue with an address is not named as approximate', () => {
@@ -227,7 +290,7 @@ test('a venue with an address is not named as approximate', () => {
     'an exactly located venue was reported as approximate');
 });
 
-test('only the rows at an addressless venue are named, not every row on the tab', () => {
+test('only the addressless venue is named, not every pin on the tab', () => {
   // One addressless venue must not tar the whole tab: a list that names every pin identifies
   // none of them.
   const { report } = refresh({
@@ -238,18 +301,28 @@ test('only the rows at an addressless venue are named, not every row on the tab'
       status: venueStatus.active })],
     spill: [
       ONE_GOOD_ROW[0],
-      ['House Concert — Amsterdam', 'Sat 6 Jun 2026', 'The Back Room', '',
-        'The Back Room, Amsterdam, Netherlands'],
+      ['The Back Room — Amsterdam', 'Sat 6 Jun 2026 · House Concert',
+        'The Back Room, Amsterdam, Netherlands', ''],
     ],
   });
-  assert.match(report, /city centre: House Concert/);
-  assert.strictEqual(/city centre:[^\n]*Open Stage/.test(report), false,
+  assert.match(report, /city centre: The Back Room/);
+  assert.strictEqual(/city centre:[^\n]*Paradiso/.test(report), false,
     'a venue with a full address was named as geocoding by name');
 });
 
+test('an addressless venue with nothing booked in it is not named, since it has no pin', () => {
+  // This report is about the pins the run produced; an unused lookup row is Check data's business.
+  const { report } = refresh({
+    venues: [PARADISO, venue({ name: 'The Back Room', city: 'Amsterdam',
+      status: venueStatus.active })],
+  });
+  assert.strictEqual(report.includes('Geocoding by venue name'), false,
+    'a venue with no events was reported as a misplaced pin');
+});
+
 test('a venue whose name merely prefixes another is not named as approximate', () => {
-  // The `+ ','` makes the comparison a whole first field: an addressless `The Back Room` must not
-  // report a row located at `The Back Room Annex, …`, a different venue with an address.
+  // The pin belongs to `The Back Room Annex`, which has an address. Matching the addressless
+  // `The Back Room` by anything looser than the whole name reports a pin that is exactly right.
   const { report } = refresh({
     events: [event({ dateStart: new Date(2026, 5, 6), title: 'At The Annex',
       venue: 'The Back Room Annex', city: 'Amsterdam', status: status.confirmed,
@@ -259,8 +332,8 @@ test('a venue whose name merely prefixes another is not named as approximate', (
       venue({ name: 'The Back Room Annex', address: 'Kade 9', postcode: '1011 AA',
         city: 'Amsterdam', status: venueStatus.active }),
     ],
-    spill: [['At The Annex — Amsterdam', 'Sat 6 Jun 2026', 'The Back Room Annex', '',
-      'The Back Room Annex, Amsterdam, Netherlands']],
+    spill: [['The Back Room Annex — Amsterdam', 'Sat 6 Jun 2026 · At The Annex',
+      'Kade 9, 1011 AA Amsterdam, Netherlands', '']],
   });
   assert.strictEqual(report.includes('Geocoding by venue name'), false,
     'a prefix of another venue name was treated as a match');
@@ -269,11 +342,15 @@ test('a venue whose name merely prefixes another is not named as approximate', (
 /* ── the instructions, which are the point of the dialog ────────────────────────────────────── */
 
 test('the report names the columns the import has to be pointed at', () => {
+  // The position column is the geocodable line, wherever it sits. Pointed at the column beside it,
+  // My Maps geocodes venue names or URLs and puts every pin somewhere plausible and wrong.
   const headers = CONFIG.mapExport.headers;
   const { report } = refresh({});
   assert.match(report, new RegExp(`Columns: ${headers.join(' \\| ')}`));
-  assert.match(report, new RegExp(`position column\\s+"${headers[headers.length - 1]}"`));
-  assert.match(report, new RegExp(`title column "${headers[0]}"`));
+  assert.match(report,
+    new RegExp(`position column\\s+"${headers[src.mapExportColumns_().indexOf('location')]}"`));
+  assert.match(report,
+    new RegExp(`title column "${headers[src.mapExportColumns_().indexOf('venue')]}"`));
 });
 
 test('the report says the layer must be deleted, not just re-imported', () => {

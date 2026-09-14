@@ -3,7 +3,8 @@
 A Google Apps Script codebase that turns one spreadsheet of events into three things, none of which have to be
 maintained by hand:
 
-- **a map** — an export tab shaped for Google My Maps, with one geocodable line and one popup per upcoming event
+- **a map** — an export tab shaped for Google My Maps: one geocodable line per venue, with its upcoming events listed
+  oldest first in the pin's popup
 - **an agenda document** — a read-only Google Doc, rebuilt weekly, grouped by month, that anyone can read or download as
   a PDF from a link that never changes
 - **a dashboard** — three dropdowns, no formulas to touch

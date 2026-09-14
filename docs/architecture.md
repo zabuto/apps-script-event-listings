@@ -19,7 +19,8 @@ A Google Sheet is the datasource, and three outputs read from it:
               │                     │                     │
       ┌───────┴───────┐    ┌────────┴────────┐   ┌────────┴─────────┐
       │   Map Export  │    │    Dashboard    │   │ Agenda document  │
-      │  (a formula)  │    │   (a formula)   │   │ (rebuilt weekly) │
+      │  (a formula,  │    │   (a formula)   │   │ (rebuilt weekly) │
+      │ row per venue)│    │                 │   │                  │
       └───────┬───────┘    └─────────────────┘   └────────┬─────────┘
               │                                           │
      imported by hand into                        read-only link, and

@@ -200,22 +200,30 @@ const CONFIG = {
 
   mapExport: {
     /**
+     * One row per **venue**: events in one room geocode to one point, where My Maps draws the pins
+     * on top of each other with only the top one clickable. The events are a list in its popup.
+     *
      * These columns *are* the popup: My Maps renders every imported column as a label/value row in
-     * sheet order, with no way to hide one, so each costs a line in every pin. `City` is deliberately
-     * absent — the title carries it (see `titleSuffix`) and `Location` says it again.
+     * sheet order, with no way to hide one, so `Website` is a labelled empty row in the pin of a
+     * venue that has no site.
      *
      * **Dropping a column needs a fresh layer, not a re-import.** My Maps matches a later import to
      * the layer's *existing* field list by name and only ever appends. Delete the layer, add it again.
      */
-    headers: ['Title', 'When', 'Venue', 'Organiser', 'Location'],
+    headers: ['Venue', 'Events', 'Location', 'Website'],
     /**
      * Appended to every geocodable line: true of every venue in one sheet, so not worth a column. Set
      * it to '' for a sheet spanning countries — and add a country column to `columns.venues`.
      */
     countrySuffix: 'Netherlands',
     /**
-     * The city is appended to the map title because the layer panel lists titles and nothing else: a
-     * touring show otherwise makes that list a dozen indistinguishable rows.
+     * The city is appended to the venue in the title column because the layer panel lists titles and
+     * nothing else: without it, a map spanning a country places nothing until a pin is opened.
+     *
+     * An em dash, because that is the mark every string this codebase emits uses to hang a qualifier
+     * off the thing before it: a venue's city here, an organiser's profile in the event lines below
+     * it, a count in front of the rows it counted. ` · ` is the other mark and separates items of a
+     * list; both appear in one popup, and a third spelling for either reads as a third meaning.
      */
     titleSuffix: ' — ',
   },

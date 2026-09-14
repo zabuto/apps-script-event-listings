@@ -328,20 +328,53 @@ function notify_(message) {
  */
 
 /**
- * Titled, upcoming, and placed somewhere.
+ * Titled and upcoming, which is the whole of *does this publish?*
  *
- * `Upcoming?` already folds in "not cancelled" and "last day is today or later", so the first two
- * terms are the whole of *does this publish?* — the map and the dashboard cannot disagree about it.
- * The third term is the map's own: an event with no venue has no position, and its city is looked up
- * from the venue, so it has no city either. `refreshMapExport` names every event it leaves out.
+ * `Upcoming?` already folds in "not cancelled" and "last day is today or later", so these two terms
+ * are all of it — the map and the dashboard cannot disagree about what publishes.
  */
-function mapExportCondition_() {
+function mapExportPublishes_() {
   const scope = CONFIG.values.scope;
   return (
     `(${colRange_('events', 'title')}<>"")` +
-    `*(${colRange_('events', 'upcoming')}=${quoteLiteral_(scope.upcoming)})` +
-    `*(${colRange_('events', 'venue')}<>"")`
+    `*(${colRange_('events', 'upcoming')}=${quoteLiteral_(scope.upcoming)})`
   );
+}
+
+/**
+ * Titled, upcoming, and placed somewhere.
+ *
+ * The venue term is the map's own: an event with no venue has no position, and its city is looked up
+ * from the venue, so it has no city either. `refreshMapExport` names every event it leaves out.
+ */
+function mapExportCondition_() {
+  return `${mapExportPublishes_()}*(${colRange_('events', 'venue')}<>"")`;
+}
+
+/**
+ * What the formula builds, in order. `CONFIG.mapExport.headers` labels these and nothing else, so
+ * the labels are free to change and their meaning is read from here — and the order is the import's:
+ * `refreshMapExport` names the position column by looking `location` up in this list, so a stack
+ * argument moved without this list moving with it points My Maps at a column it geocodes happily.
+ */
+function mapExportColumns_() {
+  return ['venue', 'events', 'location', 'website'];
+}
+
+/**
+ * The header labelling the column `key` builds, refused rather than guessed.
+ *
+ * A key this formula does not build is `indexOf` answering -1 and `headers[-1]` answering
+ * `undefined`, which the import instructions would print as the name of the column to point My Maps
+ * at — a sentence that can only be followed by guessing.
+ */
+function mapExportHeader_(key) {
+  const columns = mapExportColumns_();
+  const at = columns.indexOf(key);
+  if (at < 0) {
+    throw new Error(`The map export builds no "${key}" column; it builds ${columns.join(', ')}.`);
+  }
+  return CONFIG.mapExport.headers[at];
 }
 
 /**
@@ -353,49 +386,90 @@ function mapExportCondition_() {
  * column. `XLOOKUP` over an array held in a `LET` name collapses and `MAP` then receives arguments
  * of different lengths, so exactly the columns the map needs are the ones that die. The dashboard
  * filter fails the same way. Do not "simplify" either of them back.
+ *
+ * `UNIQUE` over the resolved venue names is what makes a row a venue rather than an event: events
+ * in one room share a point, and a map can draw one pin on it. They are lines in its popup instead.
+ *
+ * A value two places need is bound by an applied `LAMBDA` — `LAMBDA(x, …)(value)` — rather than
+ * spelled twice, each spelling being another scan of a whole column for an answer that cannot
+ * differ. A name holding one value is safe that way; a name holding an array is the collapse above.
  */
 function mapExportFormula_() {
   const headers = CONFIG.mapExport.headers;
-  if (headers.length !== 5) {
-    throw new Error('CONFIG.mapExport.headers must name exactly the five columns this formula ' +
-      `builds (title, when, venue, organiser, location); it has ${headers.length}. ` +
+  const columns = mapExportColumns_();
+  if (headers.length !== columns.length) {
+    throw new Error(`CONFIG.mapExport.headers must name exactly the ${columns.length} columns this ` +
+      `formula builds (${columns.join(', ')}); it has ${headers.length}. ` +
       'Change the labels freely — changing the count means changing this function.');
   }
 
   const cond = mapExportCondition_();
-  const col = key => `FILTER(${colRange_('events', key)}, ${cond})`;
-  const venueField = (arg, key) =>
-    `IFERROR(XLOOKUP(${arg}, ${colLookup_('venues', 'name')}, ${colLookup_('venues', key)}, ""), "")`;
+  // Every venue resolved to the venues tab's spelling *before* `UNIQUE` compares them. `UNIQUE`
+  // compares text as typed where every other name comparison in this sheet folds case, so the raw
+  // column puts `paradiso` and `Paradiso` on one coordinate as two pins listing the same events.
+  // A name the venues tab does not hold keeps its typed spelling, which is what `Check data` names.
+  const pins = `UNIQUE(MAP(FILTER(${colRange_('events', 'venue')}, ${cond}), ` +
+    `LAMBDA(vv, IFERROR(XLOOKUP(vv, ${colLookup_('venues', 'name')}, ` +
+    `${colLookup_('venues', 'name')}, vv), vv))))`;
+  // One field of the venue `vv` names, read where `vv` is a single bound value. Every column walks
+  // `pins` once and binds the fields it needs: a second `MAP` over `pins` is another pass over the
+  // events column and an `XLOOKUP` per event of it, to save one venue lookup.
+  const field = key => `IFERROR(XLOOKUP(vv, ${colLookup_('venues', 'name')}, ` +
+    `${colLookup_('venues', key)}, ""), "")`;
 
-  const site = venueField('vv', 'url');
-  const address = venueField('vv', 'address');
-  const postcode = venueField('vv', 'postcode');
+  // The city is appended to the title because the layer list shows titles and nothing else.
+  const suffix = quoteLiteral_(CONFIG.mapExport.titleSuffix);
+  const venue = `MAP(${pins}, LAMBDA(vv, LAMBDA(cc, vv&IF(cc="", "", ${suffix}&cc))` +
+    `(${field('city')})))`;
+
+  // My Maps only linkifies a URL carrying a scheme, and a URL column tends to hold bare hosts, so
+  // one is added unless there already is one.
+  const website = `MAP(${pins}, LAMBDA(vv, LAMBDA(ss, IF(ss="", "", ` +
+    `IF(LEFT(LOWER(ss),4)="http", ss, "https://"&ss)))(${field('url')})))`;
+
+  // `vv` is a name the filtered `UNIQUE` produced, so `venue=vv` excludes a blank venue by itself
+  // and the publish terms are the rest: a term that cannot change the answer is a column scanned
+  // for every pin for nothing.
+  const at = `${mapExportPublishes_()}*(${colRange_('events', 'venue')}=vv)`;
+
+  // The events at one venue, oldest first, as one block: date to sort on, then the three fields a
+  // line is made of. Sorting the columns separately would pair the title of one event with the
+  // organiser of another whenever two share a date — a line that reads well and is false.
+  const block = `SORT(FILTER(HSTACK(${colRange_('events', 'dateStart')}, ` +
+    `${colRange_('events', 'when')}, ${colRange_('events', 'title')}, ` +
+    `${colRange_('events', 'organiser')}), ${at}), 1, TRUE)`;
+
+  // A line per event, separated by CRLF: a popup does not break on a bare `CHAR(10)`. The bullets
+  // keep a run readable where the break itself is dropped, and a venue with one event gets none —
+  // a bullet marks it off from nothing. Counted off the condition the lines themselves are filtered
+  // by, so the mark and the list cannot disagree.
+  const bullet = `IF(ROWS(FILTER(${colRange_('events', 'venue')}, ${at}))=1, "", "• ")`;
   const handle = `IFERROR(XLOOKUP(pp, ${colLookup_('organisers', 'name')}, ` +
     `${colLookup_('organisers', 'social')}, ""), "")`;
+  const profile = quoteLiteral_(' — ' + CONFIG.social.profileBaseUrl);
 
-  // The city is appended to the title because the layer list shows titles and nothing else. The
-  // `City` column stays in the sheet — the list needs the title, the popup reads better with a row.
-  const suffix = quoteLiteral_(CONFIG.mapExport.titleSuffix);
-  const title = `MAP(${col('title')}, ${col('city')}, ` +
-    `LAMBDA(tt, cc, tt&IF(cc="", "", ${suffix}&cc)))`;
+  // `BYROW` walks the sorted block a row at a time, so `block` is spelled once rather than once per
+  // field — each spelling is another `SORT(FILTER(HSTACK(…)))` over four open-ended columns, per
+  // pin. The row arrives as an array, and the applied `LAMBDA` binding its fields to names is what
+  // keeps the organiser a single value under `XLOOKUP`. `hh` holds the handle, which decides
+  // whether a profile link is written and then supplies it.
+  const line = `LAMBDA(ww, tt, pp, ww&" · "&tt&IF(pp="", "", " · "&pp&` +
+    `LAMBDA(hh, IF(hh="", "", ${profile}&SUBSTITUTE(hh,"@","")))(${handle})))`;
+  const perEvent = `LAMBDA(rr, ${line}(INDEX(rr,1,2), INDEX(rr,1,3), INDEX(rr,1,4)))`;
+  // `bb` holds the mark, which the popup opens with and separates its lines by, and the count
+  // behind it is a scan of the events column.
+  const events = `MAP(${pins}, LAMBDA(vv, LAMBDA(bb, bb&` +
+    `TEXTJOIN(CHAR(13)&CHAR(10)&bb, TRUE, BYROW(${block}, ${perEvent})))(${bullet})))`;
 
   // Address, postcode and city into one geocodable line, with the country appended here rather than
   // kept in a column. A venue with no address still maps — on the city centre, which is reported.
   const country = CONFIG.mapExport.countrySuffix
     ? '&' + quoteLiteral_(', ' + CONFIG.mapExport.countrySuffix)
     : '';
-  const loc = `MAP(${col('venue')}, ${col('city')}, LAMBDA(vv, cc,` +
-    `IF(${address}="", vv&", "&cc${country},` +
-    `${address}&", "&IF(${postcode}="", "", ${postcode}&" ")&cc${country})))`;
-
-  // Venue with its own site, organiser with their handle: one fact per row, and no labelled blank for
-  // the ones that have neither. A URL column tends to hold bare hosts, and My Maps only linkifies one
-  // carrying a scheme, so it is added here unless there already is one.
-  const venue = `MAP(${col('venue')}, LAMBDA(vv, vv&` +
-    `IF(${site}="", "", " — "&IF(LEFT(LOWER(${site}),4)="http", ${site}, "https://"&${site}))))`;
-  const profile = quoteLiteral_(' — ' + CONFIG.social.profileBaseUrl);
-  const organiser = `MAP(${col('organiser')}, LAMBDA(pp,` +
-    `pp&IF(${handle}="", "", ${profile}&SUBSTITUTE(${handle},"@",""))))`;
+  const loc = `MAP(${pins}, LAMBDA(vv, LAMBDA(aa, pc, cc,` +
+    `IF(aa="", vv&IF(cc="", "", ", "&cc)${country},` +
+    `aa&", "&IF(pc="", "", pc&" ")&cc${country}))` +
+    `(${field('address')}, ${field('postcode')}, ${field('city')})))`;
 
   // The guard is not decoration: with nothing upcoming, FILTER returns #N/A and the import source
   // would be an error rather than an empty tab.
@@ -404,7 +478,7 @@ function mapExportFormula_() {
     `${colRange_('events', 'upcoming')},${quoteLiteral_(scope.upcoming)},` +
     `${colRange_('events', 'venue')},"<>")=0`;
   return `=IFERROR(IF(${counted}, "",` +
-    `HSTACK(${title}, ${col('when')}, ${venue}, ${organiser}, ${loc})), "")`;
+    `HSTACK(${venue}, ${events}, ${loc}, ${website})), "")`;
 }
 
 /**
@@ -449,9 +523,25 @@ function refreshMapExport() {
     total + row.filter(value => String(value).startsWith('#')).length, 0);
 
   const events = table_('events');
+  const venues = table_('venues');
   const scope = CONFIG.values.scope;
   const publishes = row => events.get(row, 'title') && events.get(row, 'upcoming') === scope.upcoming;
-  const expected = events.rows.filter(row => publishes(row) && events.text(row, 'venue')).length;
+  const placed = events.rows.filter(row => publishes(row) && events.text(row, 'venue'));
+
+  // The pin a name gets, resolved as the formula resolves it. `XLOOKUP` answers with the venues
+  // tab's own spelling and folds case doing it, so every case of a listed venue is one pin; a name
+  // the tab does not hold keeps the one that was typed, which `UNIQUE` then compares as typed. A
+  // count that folds further refuses a tab holding what the formula built.
+  const listed = new Map();
+  venues.rows.forEach(row => {
+    const name = venues.get(row, 'name');
+    const key = String(name).toLowerCase();
+    // First match wins, as `XLOOKUP` takes the first row it matches.
+    if (name && !listed.has(key)) listed.set(key, String(name));
+  });
+  const pinOf = value => listed.get(String(value).toLowerCase()) || String(value);
+  const pinned = new Set(placed.map(row => pinOf(events.get(row, 'venue'))));
+  const expected = pinned.size;
   const unplaced = events.rows
     .filter(row => publishes(row) && !events.text(row, 'venue'))
     .map(row => ({ title: String(events.get(row, 'title')), status: events.get(row, 'status') }));
@@ -461,6 +551,12 @@ function refreshMapExport() {
 
   say(`${name} rebuilt: ${rows} row(s), ${expected} expected, ${broken} error cell(s)` +
       (rows === expected && !broken ? ' ✓' : ' ⚠'));
+  // Why the row count is not the event count: seven rows against twelve upcoming events otherwise
+  // reads as five lost. With none placed there is no count to explain, and the lists below say why.
+  if (placed.length) {
+    say(`One pin per venue: ${placed.length} upcoming event(s) at ${expected} venue(s), each a ` +
+        'line in its venue\'s popup.');
+  }
   say(`Columns: ${headers.join(' | ')}`);
   if (stale > 0) {
     say(`Cleared ${stale} column(s) past the contract, headers included.`);
@@ -484,18 +580,12 @@ function refreshMapExport() {
   }
 
   // A pin that lands on a city centre rather than on the venue, named rather than left to the import
-  // report nobody re-reads. Counting commas cannot tell the two apart, so ask the venues tab.
-  const venues = table_('venues');
-  const addressless = venues.rows
+  // report nobody re-reads. Only the venues that got a pin: an addressless one with nothing booked
+  // in it is Check data's business.
+  const approximate = venues.rows
     .filter(row => venues.get(row, 'name') && !venues.get(row, 'address'))
+    .filter(row => pinned.has(pinOf(venues.get(row, 'name'))))
     .map(row => venues.text(row, 'name'));
-  const location = headers.length - 1;                  // the last column this formula builds
-  // The location cell carries the *event's* spelling of the venue, which the sheet resolved to this
-  // row whatever its case, so the prefix is a name like any other.
-  const approximate = block
-    .filter(row => addressless.some(venue =>
-      lookupKey_(row[location]).startsWith(lookupKey_(venue) + ',')))
-    .map(row => row[0]);
   if (approximate.length) {
     say(`Geocoding by venue name, so the pin lands on the city centre: ${approximate.join(' · ')}`);
   }
@@ -503,7 +593,7 @@ function refreshMapExport() {
   say('');
   say('The tab is live — it recomputes by itself. The map does not:');
   say(`re-import it (layer menu → delete, then Add layer → Import), position column`);
-  say(`"${headers[headers.length - 1]}", title column "${headers[0]}".`);
+  say(`"${mapExportHeader_('location')}", title column "${mapExportHeader_('venue')}".`);
   say('');
   say('Deleting the layer is not optional, and a re-import is not enough: My Maps keeps a layer\'s');
   say('own field list and only ever appends to it, so a column that has gone from this tab stays in');
@@ -723,13 +813,14 @@ function docReport_(events, docId) {
       `${Utilities.formatDate(events[events.length - 1].start, tz, 'd MMMM yyyy')}`);
   }
 
-  // Named rather than left to be noticed: this is the whole of why the map export holds fewer rows.
+  // Named rather than left to be noticed: an event in here and on no map is the first question a
+  // reader of both asks.
   const tba = events.filter(event => !event.venue).map(event => event.title);
   if (tba.length) {
     lines.push('');
     lines.push(`Listed as "${CONFIG.doc.venueTba}": ${tba.join(' · ')}`);
     lines.push('A concept event may have no venue yet. It is in here and on no map — a pin cannot say');
-    lines.push(`that — so ${CONFIG.tabs.mapExport} is shorter than this document by exactly these.`);
+    lines.push(`that. ${CONFIG.tabs.mapExport} holds a row per venue in any case, not per event.`);
   }
 
   const linked = events.filter(event => event.handle).length;

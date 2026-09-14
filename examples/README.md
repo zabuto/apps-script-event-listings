@@ -32,9 +32,16 @@ the code builds rather than exported by Google, so your own export will not matc
 
 ## `Upcoming Events Map View.png`
 
-The published My Maps view of the `Map Export` tab, one pin selected. The popup is that tab's columns in sheet order
-(`mapExport.headers`) — `Title`, `When`, `Venue`, `Organiser`, `Location` — which is why each one costs a line in
-every pin. The title ends in the city (`mapExport.titleSuffix`), the location in the country
-(`mapExport.countrySuffix`), and the `When` string reads as it does in the document.
+The published My Maps view of the `Map Export` tab against the seeded sheet, one pin selected.
+
+**Its pin is an event, where the export builds one per venue.** So its popup carries five columns — `Title`, `When`,
+`Venue`, `Organiser`, `Location` — against the four a fresh install imports, and a venue with three bookings is three
+pins stacked on one point rather than one pin listing three lines. Retaking it takes a published map of your own;
+nothing in this repo generates it.
+
+What it does show: every imported column as a labelled row in sheet order (`mapExport.headers`), which is why each one
+costs a line in every pin; a title ending in its city (`mapExport.titleSuffix`), which is all the layer panel lists; a
+location ending in the country (`mapExport.countrySuffix`); and a bare host linkified once the formula puts `https://`
+in front of it.
 
 Also a snapshot: pin colour, base map and side panel are My Maps' own, set in the map and not in this config.

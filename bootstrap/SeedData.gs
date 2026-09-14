@@ -29,8 +29,8 @@
  *
  * Four cities — Amsterdam, Amstelveen, Diemen and Zaandam — so the dashboard's city filter has
  * something to filter and the map has pins that are not all in one place. `Touring Revue` plays three
- * of them on three dates, which is what the city-in-the-map-title rule exists for: the layer panel
- * lists titles and nothing else, so without the city those three rows would be indistinguishable.
+ * of them on three dates, which is what the city in the map title is for: the layer panel lists
+ * titles and nothing else, so a run of venues says nothing about where they are without it.
  */
 
 /**
@@ -195,9 +195,8 @@ function seedEvents_() {
     [inDays_(28), '', 'Autumn Revue', 'Koninklijk Theater Carré', 'Bluebird Revue', status.confirmed, ''],
     [inDays_(35), '', 'Late Show', 'Beurs van Berlage', 'Aurora Collective', status.confirmed, ''],
 
-    // Two venues carrying two upcoming events each. The export writes a row per event, so both pins
-    // share one coordinate and the layer panel tells them apart by title; the document lists them as
-    // two lines in date order, never grouped under their venue.
+    // Two venues carrying two upcoming events each: one pin apiece, with both events listed in its
+    // popup, while the document lists them as two lines in date order under their own months.
     [inDays_(16), '', 'Youth Matinee', 'Zaantheater', 'Northside Youth Theatre', status.confirmed, ''],
     [inDays_(24), '', 'Makers Market', 'Beurs van Berlage', 'Studio Zuid', status.confirmed, ''],
 

@@ -30,6 +30,15 @@ visible rather than becoming folklore. The map export has no `LET` spelling kept
 NOT IMPORT** when it finds any. If you are debugging the map export, that report is the instrument — not the tab, which
 looks fine while being wrong.
 
+**`UNIQUE` compares text as typed, where every other name comparison in this sheet folds case.**
+`XLOOKUP`, `MATCH(…,0)`, `COUNTIF` and a bare `=` all answer `paradiso` with the row spelled
+`Paradiso`; `UNIQUE` keeps both. Handed the events tab's venue column raw, the map export builds two
+pins on one coordinate, each listing *both* events, because the `venue=vv` its popup lines are
+filtered by does fold case. Hence `mapExportFormula_` resolves every venue against the venues tab
+before `UNIQUE` sees it, which also settles the spelling a pin carries into the layer panel. The fold
+reaches exactly as far as the lookup: a venue the tab does not hold keeps the spelling it was typed
+in, so two cases of one are two pins, and `refreshMapExport` counts them the same way.
+
 **A conditional format rule may not reference another sheet.** The sheet rejects the rule when it is *set*, not when it
 is evaluated: `Conditional format rule cannot reference another sheet`. `INDIRECT` resolves the name at evaluation time,
 so the stored rule carries no cross-sheet reference — which is how the closed-venue strikethrough works, and why the
@@ -166,14 +175,18 @@ from the popup: a re-import leaves the old field there as an empty row in every 
 again.
 
 **Every imported column becomes a labelled row in the popup, in sheet order.** There is no way to hide one, so each
-column costs a line in every popup. That is why the city is appended to the title instead of being its own column — and
-why the export is five columns, not the eleven the sheet has.
+column costs a line in every popup — an empty one included. That is why the city is appended to the title instead of
+being its own column, and why the export is four columns, not the ten the events tab has.
 
-**The layer panel lists titles and nothing else.** A touring show makes that list unreadable: a dozen identical rows
-with no way to tell one town from the next. Hence the city in the title.
+**Identical addresses become identical pins, drawn on top of each other.** There is no clustering and no way to nudge
+one aside, and only the top pin is clickable, so a run of events in one room is a map showing one of them. Hence a row
+per venue rather than per event: the events are a list in the popup of the single pin their room gets.
+
+**The layer panel lists titles and nothing else.** Which is why the title column carries the city: a map spanning a
+country otherwise says nothing about where a room is until a pin is opened.
 
 **A row with no address still maps** — onto the city centre. Not a failure, and not obvious either, so
-`refreshMapExport` names every event whose pin is approximate.
+`refreshMapExport` names every venue whose pin is approximate.
 
 **Only a URL carrying a scheme gets linkified.** `https://` is added in the formula when the stored value does not have
 it, because URL columns tend to be filled in as bare hosts.

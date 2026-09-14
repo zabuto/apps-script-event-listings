@@ -12,8 +12,12 @@ in the lookups is *refused* by the dropdown — add it to its own tab first. Nev
 My Maps. The export tab is a live formula and is already current; the map is the part that is not.
 
 **Re-importing the layer.** In My Maps: the layer's ⋮ menu → **Delete this layer**, then **Add layer** → **Import** →
-the spreadsheet → position column `Location`, title column `Title`. Deleting first is not optional: a layer keeps its
+the spreadsheet → position column `Location`, title column `Venue`. Deleting first is not optional: a layer keeps its
 own field list and only ever appends to it, so a re-import leaves any dropped column in every popup as an empty row.
+
+**One pin per venue.** Events in one room land on one point, which a map can only draw one pin on, so a pin is a venue
+and its popup lists that venue's upcoming events, oldest first. A pin per event would hide all but the top one at a
+shared address.
 
 **A venue that must not publish its address.** Tick **City only?** on its row in the venues tab and leave the address
 empty: the checks stop asking for one, and the map puts the pin on the city. Typing a street number into a row with
@@ -76,8 +80,8 @@ Three things it cannot check, because no script can see them:
 There are no backups. This codebase does not make one, does not keep one, and cannot restore one:
 
 - **The outputs are not copies.** The agenda document is cleared and rebuilt from scratch on every run and holds only
-  upcoming events. The map export is a formula holding only events with a venue. Neither has ever contained a past
-  event, a private note, or anything you deleted.
+  upcoming events. The map export is a formula holding only the venues of upcoming events. Neither has ever contained a
+  past event, a private note, or anything you deleted.
 - **`captureSheetData` is a snapshot, not a backup.** It writes the events and the hand-researched venue and organiser
   columns into `SeedData.gs` as code — enough for `seedSheet` to rebuild a sheet that looks like the one you had — but
   only for the moment you ran it, and only if you then paste and commit the result. Nothing schedules it.
@@ -100,7 +104,7 @@ project, so they are the installer's.
 | A hygiene check reads empty | the check formula was overwritten | `setupChecks` |
 | Export tab has `#` cells | a lookup tab's headers moved | fix the headers, then **Refresh map export** |
 | Export tab is empty | nothing is upcoming, or nothing upcoming has a venue | check the dialog — it says which |
-| Document has fewer events than the export | it has *more*: venue-to-be-announced rows are off the map | expected |
+| Export has fewer rows than the document has events | a row is a venue; venue-less events are off the map | expected |
 | Document and sheet disagree on the count | a row reads upcoming but has no real date to sort by | fix the date |
 | Menu item answers `Script function not found` | the bound project was not pushed | `cd src && clasp push -f`, reload |
 | `Script property … is not set` | the bound project has no ids | [`getting-started.md`](getting-started.md), step 6 |
