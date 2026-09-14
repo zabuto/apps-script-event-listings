@@ -34,7 +34,8 @@ the code builds rather than exported by Google, so your own export will not matc
 
 The published My Maps view of the `Map Export` tab, one pin selected. The popup is that tab's columns in sheet order
 (`mapExport.headers`) — `Title`, `When`, `Venue`, `Organiser`, `Location` — which is why each one costs a line in
-every pin. The title ends in the city (`mapExport.titleSuffix`), the location in the country
-(`mapExport.countrySuffix`), and the `When` string reads as it does in the document.
+every pin. A name is the date and the title (`mapExport.titleDateFormat`, `titleJoin`); the location carries the city
+and ends in the country (`mapExport.countrySuffix`).
 
-Also a snapshot: pin colour, base map and side panel are My Maps' own, set in the map and not in this config.
+Also a snapshot: the pins in the image carry no date, because the layer was imported from an export that had none, and
+pin colour, base map and side panel are My Maps' own, set in the map and not in this config.

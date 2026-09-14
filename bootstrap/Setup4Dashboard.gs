@@ -287,8 +287,9 @@ function writeReadMe_(ss) {
     ['', ''],
     ['Columns you should not type in', 'heading'],
     [
-      `${tabs.events} ${computed} are formulas, and so are ${tabs.dashboard}, ${tabs.mapExport} and ` +
-        `${tabs.lists}. They are protected: if a cell refuses your edit, it is meant to.`,
+      `${tabs.events} ${computed} are formulas, and so are ${tabs.dashboard} and ${tabs.lists}. ` +
+        `${tabs.mapExport} is rewritten from the menu. They are protected: if a cell refuses your ` +
+        'edit, it is meant to.',
       '',
     ],
     ['', ''],
@@ -303,10 +304,10 @@ function writeReadMe_(ss) {
     ['', ''],
     ['Refreshing the map', 'heading'],
     [
-      `The map does not update itself. After adding or changing events, use the ` +
+      `Neither ${tabs.mapExport} nor the map updates itself. After adding or changing events, use the ` +
         `${CONFIG.brand.menu} menu → Refresh map export, then re-import ${tabs.mapExport} into the map ` +
-        '(delete the layer first — a re-import alone keeps the old fields). The agenda document does ' +
-        'refresh itself, once a week.',
+        '(delete the layer first — a re-import alone keeps the old fields). One event becomes one pin ' +
+        'per date it runs. The agenda document does refresh itself, once a week.',
       '',
     ],
     ['', ''],

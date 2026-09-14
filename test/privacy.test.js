@@ -17,6 +17,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { loadProject } = require('./helpers/project');
 const { withoutStrings } = require('./helpers/formula');
+const { installFakes, fakeSpreadsheet, midnightIn, rowFor } = require('./helpers/fakes');
 
 const boot = loadProject('bootstrap');
 const src = loadProject('src');
@@ -160,11 +161,11 @@ function assertNoPrivate(project, tabKey, label, formula, { local = false } = {}
  */
 
 /** The private note on the venues tab, which the probes below read in every spelling. */
-const PRIVATE_VENUE_COLUMN = privateColumns(src, 'venues')[0];
+const PRIVATE_VENUE_COLUMN = privateColumns(boot, 'venues')[0];
 
 /** Fails unless `formula` is caught reading `PRIVATE_VENUE_COLUMN`. */
 function assertCaught(formula, why, options) {
-  assert.throws(() => assertNoPrivate(src, 'venues', 'a probe', formula, options),
+  assert.throws(() => assertNoPrivate(boot, 'venues', 'a probe', formula, options),
     new RegExp(`reads ${forRegex(PRIVATE_VENUE_COLUMN.header)}`), why);
 }
 
@@ -197,9 +198,9 @@ test('a whole-row reference is caught, because it reads every column there is', 
 });
 
 test('an on-tab formula is caught reading its own private column by a bare letter', () => {
-  const g = privateColumns(src, 'events')[0].letter;
+  const g = privateColumns(boot, 'events')[0].letter;
   assert.throws(
-    () => assertNoPrivate(src, 'events', 'a probe', `=ARRAYFORMULA(IF(${g}2:${g}="","",${g}2:${g}))`,
+    () => assertNoPrivate(boot, 'events', 'a probe', `=ARRAYFORMULA(IF(${g}2:${g}="","",${g}2:${g}))`,
       { local: true }),
     /reads Note \(private\)/);
 });
@@ -208,19 +209,19 @@ test('the same bare letter is not held against a formula that lives on another t
   // Not a stricter test but a wrong one: `Organisers!` column D is the private note, and the map
   // export legitimately contains `Events!D2:D` for the venue. An unqualified range belongs to
   // whatever tab the formula sits on, which only `local` can say.
-  assert.doesNotThrow(() => assertNoPrivate(src, 'organisers', 'a probe',
+  assert.doesNotThrow(() => assertNoPrivate(boot, 'organisers', 'a probe',
     '=FILTER(Events!C2:C, Events!D2:D<>"")'));
 });
 
 test('a formula reading only public columns passes, so the check is not always failing', () => {
-  assert.doesNotThrow(() => assertNoPrivate(src, 'venues', 'a probe',
+  assert.doesNotThrow(() => assertNoPrivate(boot, 'venues', 'a probe',
     '=IFERROR(XLOOKUP(A2, Venues!$A:$A, Venues!$B:$B, ""), "")'));
 });
 
 test('a reference the reader cannot parse fails rather than passing', () => {
   // A reader that silently reads nothing makes every assertion after it vacuous. A named range
   // could point anywhere, so a spelling the regex cannot follow has to stop the test.
-  assert.throws(() => assertNoPrivate(src, 'venues', 'a probe', '=SUM(Venues!SomeNamedRange)'),
+  assert.throws(() => assertNoPrivate(boot, 'venues', 'a probe', '=SUM(Venues!SomeNamedRange)'),
     /found 0 of the 1 "Venues!" reference/);
 });
 
@@ -232,7 +233,7 @@ test('a private column that lost its marker stops the file rather than emptying 
     column.header = column.header.replace(/\(private\)/i, '(internal)');
   });
   try {
-    assert.throws(() => assertNoPrivate(src, 'venues', 'a probe', '=Venues!$A:$A'),
+    assert.throws(() => assertNoPrivate(boot, 'venues', 'a probe', '=Venues!$A:$A'),
       /has no \(private\) column/);
   } finally {
     CONFIG.columns.venues.forEach((column, i) => { column.header = saved[i]; });
@@ -281,15 +282,54 @@ test('no hygiene check reads a private column', () => {
 
 /* ── the three outputs ──────────────────────────────────────────────────────────────────────── */
 
-test('the map export formula does not read a private column', () => {
-  const formula = src.mapExportFormula_();
-  assertNoPrivate(src, 'events', 'mapExportFormula_', formula);
-  assertNoPrivate(src, 'venues', 'mapExportFormula_', formula);
-  assertNoPrivate(src, 'organisers', 'mapExportFormula_', formula);
-});
+/**
+ * A row for `tabKey` with `marker` in every private column.
+ *
+ * Driven by the `(private)` markers rather than by a list here, so a private column added to a tab
+ * is one this fixture carries without being told.
+ */
+function withPrivate(tabKey, values, marker) {
+  const columns = CONFIG.columns[tabKey].filter(column => /\(private\)/i.test(column.header));
+  assert.ok(columns.length > 0, `${tabKey} has no (private) column, so this fixture proves nothing`);
+  const filled = Object.assign({}, values);
+  for (const column of columns) filled[column.key] = marker;
+  return rowFor(CONFIG, tabKey, filled);
+}
 
-test('the map export condition does not read a private column', () => {
-  assertNoPrivate(src, 'events', 'mapExportCondition_', src.mapExportCondition_());
+/** The rows `mapExportRows_` builds over a sheet holding these tabs. */
+function mapRows(tabs, zone) {
+  const spreadsheet = fakeSpreadsheet(CONFIG, { timeZone: zone, tabs: tabs });
+  const restore = installFakes({
+    spreadsheet: spreadsheet, now: new Date('2026-06-10T09:00:00Z'),
+  });
+  try {
+    return src.mapExportRows_().rows;
+  } finally {
+    restore();
+  }
+}
+
+test('no private column reaches a map export row', () => {
+  // The map is built from values rather than from a formula, so this reads the rows themselves: a
+  // note is one column away from the title, and every row here carries one in each private column.
+  const marker = 'Do not publish: side door code 1234';
+  const zone = 'Europe/Amsterdam';
+  const rows = mapRows({
+    events: [withPrivate('events', { dateStart: midnightIn(zone, '2026-06-12'), title: 'Open Stage',
+      venue: 'Paradiso', organiser: 'Studio Zuid', city: 'Amsterdam',
+      status: CONFIG.values.eventStatus.confirmed, upcoming: CONFIG.values.scope.upcoming }, marker)],
+    venues: [withPrivate('venues', { name: 'Paradiso', address: 'Weteringschans 6',
+      postcode: '1017 SG', city: 'Amsterdam', url: 'paradiso.nl',
+      status: CONFIG.values.venueStatus.active }, marker)],
+    organisers: [withPrivate('organisers',
+      { name: 'Studio Zuid', social: 'studiozuid' }, marker)],
+  }, zone);
+
+  assert.ok(rows.length > 0, 'the fixture produced no rows, so nothing was compared');
+  for (const row of rows) {
+    assert.strictEqual(row.join(' | ').includes(marker), false,
+      `a map export row carries a private column: ${row.join(' | ')}`);
+  }
 });
 
 test('the dashboard filter does not read a private column', () => {

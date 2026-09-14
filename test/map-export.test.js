@@ -1,249 +1,409 @@
 /**
- * The map export formula: the properties that make it importable, and the spelling it must keep.
+ * The rows the map export is built from: one per date, named for that date.
  *
- * `check-formulas.js` already proves it is balanced and free of `undefined`. What is asserted here
- * is what that check cannot see — that the formula still says the things My Maps and the geocoder
- * depend on, and that nobody has "simplified" it into the shape that returns nothing.
+ * Every assertion is about a value a pin ends up carrying: the map shows what the tab handed it.
+ * Where those rows are written is `map-refresh.test.js`.
+ *
+ * The clock is frozen, because a run is expanded against *today*: read the real one and the row
+ * count changes daily.
  */
 const { test } = require('node:test');
 const assert = require('node:assert');
 const { loadProject } = require('./helpers/project');
-const { withoutStrings, callsOf, lambdaParams, boundNamesAt, IDENTIFIER } =
-  require('./helpers/formula');
+const { installFakes, fakeSpreadsheet, midnightIn, rowFor } = require('./helpers/fakes');
 
 const src = loadProject('src');
 const CONFIG = src.CONFIG;
+const status = CONFIG.values.eventStatus;
+const scope = CONFIG.values.scope;
+const venueStatus = CONFIG.values.venueStatus;
 
-test('the header count is enforced rather than assumed', () => {
-  const saved = CONFIG.mapExport.headers;
-  CONFIG.mapExport.headers = ['Title', 'When', 'Venue'];
+const SHEET_ZONE = 'Europe/Amsterdam';
+/** Wednesday, mid-morning: far enough from either midnight that the zone is not what is under test. */
+const NOW = new Date('2026-06-10T09:00:00Z');
+const day = ymd => midnightIn(SHEET_ZONE, ymd);
+
+const TITLE = 0;
+const WHEN = 1;
+const VENUE = 2;
+const ORGANISER = 3;
+const LOCATION = 4;
+
+const event = values => rowFor(CONFIG, 'events', Object.assign({
+  status: status.confirmed, upcoming: scope.upcoming,
+}, values));
+const venue = values => rowFor(CONFIG, 'venues', Object.assign({
+  status: venueStatus.active,
+}, values));
+
+const PARADISO = venue({
+  name: 'Paradiso', address: 'Weteringschans 6', postcode: '1017 SG', city: 'Amsterdam',
+});
+
+/** `mapExportRows_` over a sheet holding these tabs. */
+function build({ events = [], venues = [PARADISO], organisers = [] } = {}) {
+  const spreadsheet = fakeSpreadsheet(CONFIG, {
+    timeZone: SHEET_ZONE,
+    tabs: { events: events, venues: venues, organisers: organisers },
+  });
+  const restore = installFakes({ spreadsheet: spreadsheet, now: NOW });
   try {
-    assert.throws(() => src.mapExportFormula_(), /exactly the five columns/);
+    return src.mapExportRows_();
   } finally {
-    CONFIG.mapExport.headers = saved;
-  }
-});
-
-test('the formula is flat: no LET, which returns nothing here', () => {
-  // The tidy spelling — one LET, names holding arrays, XLOOKUP over them — returns the right row
-  // count with #VALUE! in every looked-up column, and IFERROR presents that as an empty tab.
-  assert.strictEqual(/\bLET\s*\(/.test(src.mapExportFormula_()), false,
-    'the map export has been rewritten as LET — see docs/gotchas.md');
-});
-
-/* ── the shape the formula has to keep ──────────────────────────────────────────────────────── */
-
-/*
- * The rule is that every `XLOOKUP` searches for **one value**: over an array it collapses and takes
- * the looked-up columns down with it. Counting the vocabulary cannot say that — a formula with one
- * `LAMBDA` and four bare `XLOOKUP`s contains `LAMBDA(`, and stays balanced, so `check-formulas.js`
- * passes it too.
- *
- * So the argument is read instead. For each `XLOOKUP` the search key must be a bare name, and that
- * name must be bound by a `LAMBDA` enclosing it. Both halves are load bearing: the first rejects
- * `XLOOKUP(FILTER(…), …)` and `XLOOKUP(Events!D2:D, …)`, the second rejects a name holding an array
- * — which is what a `LET` name is, so the `LET` rewrite is caught by behaviour, not by spelling.
- */
-
-/**
- * One argument as it was actually written, for the failure message.
- *
- * The parser works on blanked text, so `arg.text` reads `<>  ` where the formula says `<>""`.
- * `withoutStrings` keeps every offset, so the original can be quoted instead.
- */
-const asWritten = (formula, argument) =>
-  String(formula).slice(argument.from, argument.to).trim();
-
-/** Fails unless every `XLOOKUP` in `formula` searches for a single value bound by a `LAMBDA`. */
-function assertLookupsTakeOneValue(label, formula) {
-  const text = withoutStrings(String(formula));
-  const lambdas = callsOf(text, 'LAMBDA');
-  const lookups = callsOf(text, 'XLOOKUP');
-
-  // Nothing to check is not a pass: this is the assertion an over-eager simplification would empty.
-  assert.ok(lookups.length > 0,
-    `${label} contains no XLOOKUP at all, so this check compared nothing — if the lookups moved to ` +
-    'another function, point this test at it');
-
-  for (const lookup of lookups) {
-    const key = lookup.args[0].text;
-    const written = asWritten(formula, lookup.args[0]);
-    assert.ok(IDENTIFIER.test(key),
-      `${label}: XLOOKUP searches for "${written}", which is an expression rather than a single ` +
-      'value — over an array it collapses and every looked-up column comes back #VALUE!');
-    assert.ok(boundNamesAt(lambdas, lookup.open).has(key),
-      `${label}: XLOOKUP searches for "${written}", which no enclosing LAMBDA binds — a name ` +
-      'holding an array fails the same way the array does, and is what a LET name would be here');
+    restore();
   }
 }
 
-/** Fails unless every `MAP` hands its arrays to a `LAMBDA` taking exactly that many arguments. */
-function assertMapArityMatches(label, formula) {
-  const text = withoutStrings(String(formula));
-  const maps = callsOf(text, 'MAP');
-
-  assert.ok(maps.length > 0, `${label} contains no MAP at all, so this check compared nothing`);
-
-  for (const map of maps) {
-    const arrays = map.args.slice(0, -1);
-    const body = map.args[map.args.length - 1];
-    assert.match(body.text, /^LAMBDA\s*\(/,
-      `${label}: MAP's last argument is "${asWritten(formula, body).slice(0, 40)}" rather than a ` +
-      'LAMBDA, so the arrays are not being walked a row at a time');
-    const [lambda] = callsOf(body.text, 'LAMBDA');
-    assert.strictEqual(lambdaParams(lambda).length, arrays.length,
-      `${label}: MAP is given ${arrays.length} array(s) but its LAMBDA takes ` +
-      `${lambdaParams(lambda).length} — mismatched lengths are how this formula fails in a sheet`);
-  }
+/** One confirmed, upcoming event at Paradiso, over the dates given. */
+function atParadiso(values) {
+  return event(Object.assign({ venue: 'Paradiso', city: 'Amsterdam' }, values));
 }
 
-test('every XLOOKUP searches for a single value handed to it by an enclosing LAMBDA', () => {
-  assertLookupsTakeOneValue('mapExportFormula_', src.mapExportFormula_());
+/* ── one row per date ───────────────────────────────────────────────────────────────────────── */
+
+test('a one-day event is one row', () => {
+  const built = build({ events: [atParadiso({ dateStart: day('2026-06-12'), title: 'Open Stage' })] });
+  assert.strictEqual(built.rows.length, 1);
+  assert.strictEqual(built.placed, 1);
 });
 
-test('every MAP hands its arrays to a LAMBDA of matching arity', () => {
-  // "MAP then receives arguments of different lengths" is the second half of the LET failure, and
-  // the half a count of LAMBDAs could not see.
-  assertMapArityMatches('mapExportFormula_', src.mapExportFormula_());
+test('a run is one row per date it covers, ends included', () => {
+  const built = build({
+    events: [atParadiso({
+      dateStart: day('2026-06-12'), dateEnd: day('2026-06-14'), title: 'Weekender',
+    })],
+  });
+  assert.deepStrictEqual(built.rows.map(row => row[TITLE]), [
+    '12-06-26 Weekender',
+    '13-06-26 Weekender',
+    '14-06-26 Weekender',
+  ]);
+  // One event over three dates, because the count a maintainer checks against the sheet is events.
+  assert.strictEqual(built.placed, 1);
 });
 
-/* ── the two checks above, held to the shapes that fail in a sheet ──────────────────────────── */
-
-/*
- * Each probe below is a formula that would come back #VALUE! from its looked-up columns, and each is
- * asserted to be *caught*. Without them the pair above says only "the shipped formula passes".
- */
-
-/** The organiser column as it is shipped: one array, one LAMBDA, the lookup on the bound name. */
-const SHIPPED = '=MAP(FILTER(Events!E2:E, Events!C2:C<>""), LAMBDA(pp, ' +
-  'pp&IFERROR(XLOOKUP(pp, Organisers!$A:$A, Organisers!$B:$B, ""), "")))';
-
-test('the shipped shape passes, so the checks are not simply always failing', () => {
-  assert.doesNotThrow(() => assertLookupsTakeOneValue('a probe', SHIPPED));
-  assert.doesNotThrow(() => assertMapArityMatches('a probe', SHIPPED));
+test('the dates a run has already spent are not on the map', () => {
+  // The event is still upcoming — its last day is ahead — but a pin on a date that has been and
+  // gone is one a reader has to work out is past.
+  const built = build({
+    events: [atParadiso({
+      dateStart: day('2026-06-09'), dateEnd: day('2026-06-11'), title: 'Under Way',
+    })],
+  });
+  assert.deepStrictEqual(built.rows.map(row => row[TITLE]), [
+    '10-06-26 Under Way',
+    '11-06-26 Under Way',
+  ]);
+  assert.strictEqual(built.past, 1);
 });
 
-test('an XLOOKUP over a FILTER is caught', () => {
-  // The organiser column looking up the whole filtered array at once, with the other columns'
-  // LAMBDAs still present — which is what makes it invisible to a count of the vocabulary.
-  const leak = `=HSTACK(${SHIPPED.slice(1)}, IFERROR(XLOOKUP(FILTER(Events!E2:E, ` +
-    'Events!C2:C<>""), Organisers!$A:$A, Organisers!$B:$B, ""), ""))';
-  assert.throws(() => assertLookupsTakeOneValue('a probe', leak),
-    /searches for "FILTER\(Events!E2:E, Events!C2:C<>""\)", which is an expression/);
+test('a run is cut at the configured number of dates, and the cut is reported', () => {
+  // A year of pins is what a mistyped end date otherwise becomes.
+  const built = build({
+    events: [atParadiso({
+      dateStart: day('2026-06-12'), dateEnd: day('2027-06-12'), title: 'Mistyped Year',
+    })],
+  });
+  assert.strictEqual(built.rows.length, CONFIG.mapExport.maxDays);
+  assert.deepStrictEqual(built.capped, ['Mistyped Year (366 dates)']);
 });
 
-test('an XLOOKUP over a bare range is caught', () => {
-  assert.throws(() => assertLookupsTakeOneValue('a probe',
-    '=IFERROR(XLOOKUP(Events!E2:E, Organisers!$A:$A, Organisers!$B:$B, ""), "")'),
-  /which is an expression rather than a single value/);
+test('an end date before the start is one row, not a negative count', () => {
+  // Check data names this row, and the sheet is where it gets fixed. Until then the map shows the
+  // start date rather than nothing at all.
+  const built = build({
+    events: [atParadiso({
+      dateStart: day('2026-06-20'), dateEnd: day('2026-06-12'), title: 'Backwards',
+    })],
+  });
+  assert.deepStrictEqual(built.rows.map(row => row[TITLE]), ['20-06-26 Backwards']);
 });
 
-test('an XLOOKUP over a LET name is caught, though the name is a bare identifier', () => {
-  // Caught by what it does rather than by the word LET: `p` reads as a single value and holds an
-  // array, which is the whole reason the tidy spelling returns nothing.
-  assert.throws(() => assertLookupsTakeOneValue('a probe',
-    '=LET(p, Events!E2:E, IFERROR(XLOOKUP(p, Organisers!$A:$A, Organisers!$B:$B, ""), ""))'),
-  /which no enclosing LAMBDA binds/);
+test('the rows are ordered by date, whatever order the events tab is in', () => {
+  // The layer panel lists names and nothing else, and a name leads with its date.
+  const built = build({
+    events: [
+      atParadiso({ dateStart: day('2026-06-13'), title: 'Later' }),
+      atParadiso({ dateStart: day('2026-06-11'), dateEnd: day('2026-06-12'), title: 'Earlier' }),
+    ],
+  });
+  assert.deepStrictEqual(built.rows.map(row => row[TITLE]), [
+    '11-06-26 Earlier',
+    '12-06-26 Earlier',
+    '13-06-26 Later',
+  ]);
 });
 
-test('a name bound by a LAMBDA that does not enclose the lookup is caught', () => {
-  // Scope is checked by offset, not by "does this name appear in a LAMBDA somewhere" — otherwise a
-  // sibling column's parameter would launder any lookup in the formula.
-  assert.throws(() => assertLookupsTakeOneValue('a probe',
-    '=HSTACK(MAP(FILTER(Events!D2:D, Events!C2:C<>""), LAMBDA(vv, vv)), ' +
-    'IFERROR(XLOOKUP(vv, Venues!$A:$A, Venues!$B:$B, ""), ""))'),
-  /which no enclosing LAMBDA binds/);
-});
+/* ── what a pin is named ────────────────────────────────────────────────────────────────────── */
 
-test('a MAP whose LAMBDA takes too few arguments is caught', () => {
-  assert.throws(() => assertMapArityMatches('a probe',
-    '=MAP(FILTER(Events!C2:C, Events!C2:C<>""), FILTER(Events!H2:H, Events!C2:C<>""), ' +
-    'LAMBDA(tt, tt))'),
-  /given 2 array\(s\) but its LAMBDA takes 1/);
-});
-
-test('a MAP handed something other than a LAMBDA is caught', () => {
-  assert.throws(() => assertMapArityMatches('a probe',
-    '=MAP(FILTER(Events!C2:C, Events!C2:C<>""), Events!H2:H)'),
-  /last argument is "Events!H2:H" rather than a LAMBDA/);
-});
-
-test('a formula with no lookups left in it fails rather than reporting clean', () => {
-  assert.throws(() => assertLookupsTakeOneValue('a probe', '=FILTER(Events!C2:C, Events!C2:C<>"")'),
-    /contains no XLOOKUP at all/);
-  assert.throws(() => assertMapArityMatches('a probe', '=FILTER(Events!C2:C, Events!C2:C<>"")'),
-    /contains no MAP at all/);
-});
-
-test('the whole formula is guarded, so an empty sheet is an empty tab and not an error', () => {
-  // With nothing upcoming, FILTER returns #N/A and the import source becomes an error rather than
-  // an empty tab — which My Maps would take as place names.
-  const formula = src.mapExportFormula_();
-  assert.ok(formula.startsWith('=IFERROR('), 'the IFERROR guard is gone');
-  assert.ok(formula.includes('COUNTIFS('), 'the empty-sheet COUNTIFS guard is gone');
-});
-
-test('the condition is the sheet\'s own Upcoming? column, not a second opinion', () => {
-  // If the map decided "does this publish?" for itself, it could disagree with the document and the
-  // dashboard. It must read the one column instead.
-  const condition = src.mapExportCondition_();
-  assert.ok(condition.includes(src.colRange_('events', 'upcoming')),
-    'the map export no longer reads the Upcoming? column');
-  assert.ok(condition.includes(CONFIG.values.scope.upcoming));
-});
-
-test('an event with no venue is excluded, because it has no position', () => {
-  assert.ok(src.mapExportCondition_().includes(`${src.colRange_('events', 'venue')}<>""`));
-});
-
-test('the geocodable line carries the country suffix', t => {
-  // Skipped rather than returned when unset, so clearing the setting shows in the summary as a test
-  // that did not run rather than one that passed.
-  if (!CONFIG.mapExport.countrySuffix) {
-    t.skip('CONFIG.mapExport.countrySuffix is not set');
-    return;
+test('the date leads the name, spelled as the setting spells it', () => {
+  const saved = CONFIG.mapExport.titleDateFormat;
+  try {
+    CONFIG.mapExport.titleDateFormat = 'yyyy-mm-dd';
+    const built = build({
+      events: [atParadiso({ dateStart: day('2026-06-12'), title: 'Open Stage' })],
+    });
+    assert.strictEqual(built.rows[0][TITLE], '2026-06-12 Open Stage');
+  } finally {
+    CONFIG.mapExport.titleDateFormat = saved;
   }
-  assert.ok(src.mapExportFormula_().includes(CONFIG.mapExport.countrySuffix),
-    'the country suffix is not in the location column, so addresses geocode ambiguously');
 });
 
-test('the country suffix is appended when set, and contributes nothing when cleared', () => {
-  // The rule rather than the shipped value, since an installer is free to clear the setting. Both
-  // states run off a probe value: using the live one would compare against `", "` when it is empty,
-  // and `", "` is a legitimate join in the location line.
+test('every token the date format may hold is spelled from the configured names', () => {
+  const parts = { year: 2026, month: 6, day: 7, weekDay: 0 };
+  const spelled = format => {
+    const saved = CONFIG.mapExport.titleDateFormat;
+    try {
+      CONFIG.mapExport.titleDateFormat = format;
+      return src.mapDateText_(parts);
+    } finally {
+      CONFIG.mapExport.titleDateFormat = saved;
+    }
+  };
+  assert.strictEqual(spelled('d-m-y'), '7-6-26');
+  assert.strictEqual(spelled('dd-mm-yy'), '07-06-26');
+  assert.strictEqual(spelled('dd-mm-yyyy'), '07-06-2026');
+  assert.strictEqual(spelled('ddd d mmm yyyy'),
+    `${CONFIG.values.dayNames[0]} 7 ${CONFIG.values.monthNames[5]} 2026`);
+});
+
+test('a date format this cannot spell is refused rather than printed', () => {
+  // Passed through as text it names every pin after the setting: `dddd-mm` would read "dddd-06".
+  const saved = CONFIG.mapExport.titleDateFormat;
+  try {
+    CONFIG.mapExport.titleDateFormat = 'dddd-mm';
+    assert.throws(() => src.mapDateText_({ year: 2026, month: 6, day: 7, weekDay: 0 }),
+      /named from "dddd"/);
+  } finally {
+    CONFIG.mapExport.titleDateFormat = saved;
+  }
+});
+
+test('a name is the date and the title, and nothing else the popup already says', () => {
+  // The layer panel truncates, and the city is the last field of `Location` in every popup.
+  const built = build({
+    events: [atParadiso({ dateStart: day('2026-06-12'), title: 'Open Stage' })],
+  });
+  assert.strictEqual(built.rows[0][TITLE], '12-06-26 Open Stage');
+  assert.strictEqual(built.rows[0][TITLE].includes('Amsterdam'), false);
+});
+
+/* ── what a pin says ────────────────────────────────────────────────────────────────────────── */
+
+test('a one-day event says its own date, in the words the document uses', () => {
+  const built = build({
+    events: [atParadiso({ dateStart: day('2026-06-12'), title: 'Open Stage' })],
+  });
+  assert.strictEqual(built.rows[0][WHEN], 'Fri 12 Jun 2026');
+});
+
+test('each date of a run says which day of the run it is', () => {
+  // The events tab spells a run as a span, which every pin of it would otherwise repeat while its
+  // name says a single date.
+  const built = build({
+    events: [atParadiso({
+      dateStart: day('2026-06-12'), dateEnd: day('2026-06-14'), title: 'Weekender',
+    })],
+  });
+  assert.deepStrictEqual(built.rows.map(row => row[WHEN]), [
+    'Fri 12 Jun 2026 (day 1 of 3)',
+    'Sat 13 Jun 2026 (day 2 of 3)',
+    'Sun 14 Jun 2026 (day 3 of 3)',
+  ]);
+});
+
+test('a date left of a run counts from the run, not from what is left of it', () => {
+  const built = build({
+    events: [atParadiso({
+      dateStart: day('2026-06-09'), dateEnd: day('2026-06-11'), title: 'Under Way',
+    })],
+  });
+  assert.deepStrictEqual(built.rows.map(row => row[WHEN]), [
+    'Wed 10 Jun 2026 (day 2 of 3)',
+    'Thu 11 Jun 2026 (day 3 of 3)',
+  ]);
+});
+
+test('clearing the run wording leaves the date alone', () => {
+  const saved = CONFIG.mapExport.runDay;
+  try {
+    CONFIG.mapExport.runDay = '';
+    const built = build({
+      events: [atParadiso({
+        dateStart: day('2026-06-12'), dateEnd: day('2026-06-13'), title: 'Weekender',
+      })],
+    });
+    assert.deepStrictEqual(built.rows.map(row => row[WHEN]),
+      ['Fri 12 Jun 2026', 'Sat 13 Jun 2026']);
+  } finally {
+    CONFIG.mapExport.runDay = saved;
+  }
+});
+
+/* ── the venue, the organiser and the line that is geocoded ─────────────────────────────────── */
+
+test('the geocodable line is address, postcode, city and country', () => {
+  const built = build({
+    events: [atParadiso({ dateStart: day('2026-06-12'), title: 'Open Stage' })],
+  });
+  assert.strictEqual(built.rows[0][LOCATION],
+    `Weteringschans 6, 1017 SG Amsterdam, ${CONFIG.mapExport.countrySuffix}`);
+});
+
+test('a venue with no address geocodes by name, and is named as approximate', () => {
+  const built = build({
+    events: [event({ dateStart: day('2026-06-12'), title: 'House Concert',
+      venue: 'The Back Room', city: 'Amsterdam' })],
+    venues: [venue({ name: 'The Back Room', city: 'Amsterdam' })],
+  });
+  assert.strictEqual(built.rows[0][LOCATION],
+    `The Back Room, Amsterdam, ${CONFIG.mapExport.countrySuffix}`);
+  assert.deepStrictEqual(built.approximate, ['House Concert']);
+});
+
+test('a venue with no postcode still plots, on street and city', () => {
+  const built = build({
+    events: [event({ dateStart: day('2026-06-12'), title: 'Matinee', venue: 'Zaal Zes',
+      city: 'Utrecht' })],
+    venues: [venue({ name: 'Zaal Zes', address: 'Kade 9', city: 'Utrecht' })],
+  });
+  assert.strictEqual(built.rows[0][LOCATION], `Kade 9, Utrecht, ${CONFIG.mapExport.countrySuffix}`);
+  assert.deepStrictEqual(built.approximate, []);
+});
+
+test('the country is appended when set and contributes nothing when cleared', () => {
   const saved = CONFIG.mapExport.countrySuffix;
+  const events = [atParadiso({ dateStart: day('2026-06-12'), title: 'Open Stage' })];
   try {
     CONFIG.mapExport.countrySuffix = 'Testland';
-    assert.ok(src.mapExportFormula_().includes('", Testland"'),
-      'a configured country suffix is not reaching the location line');
+    assert.ok(build({ events: events }).rows[0][LOCATION].endsWith(', Testland'));
 
     CONFIG.mapExport.countrySuffix = '';
-    const cleared = src.mapExportFormula_();
-    assert.strictEqual(cleared.includes('Testland'), false, 'the suffix survived being cleared');
-    // `[,)]` rather than just `)`: the suffix sits at the end of both branches of the location IF,
-    // one followed by an argument separator and the other by the closing parenthesis. The
-    // legitimate `&", "&cc` joins are followed by `&`, so they do not match.
-    assert.strictEqual(/&", "[,)]/.test(cleared), false,
-      'a dangling ", " was appended to the location line, so every address geocodes with it');
+    const cleared = build({ events: events }).rows[0][LOCATION];
+    assert.strictEqual(cleared, 'Weteringschans 6, 1017 SG Amsterdam');
   } finally {
     CONFIG.mapExport.countrySuffix = saved;
   }
 });
 
-test('the city is appended to the title, since the layer panel lists titles and nothing else', () => {
-  assert.ok(src.mapExportFormula_().includes(CONFIG.mapExport.titleSuffix));
+test('the venue carries its own site, with a scheme My Maps will linkify', () => {
+  // A URL column tends to hold bare hosts, and only a URL carrying a scheme becomes a link.
+  const built = build({
+    events: [atParadiso({ dateStart: day('2026-06-12'), title: 'Open Stage' })],
+    venues: [venue({ name: 'Paradiso', address: 'Weteringschans 6', postcode: '1017 SG',
+      city: 'Amsterdam', url: 'paradiso.nl' })],
+  });
+  assert.strictEqual(built.rows[0][VENUE], 'Paradiso — https://paradiso.nl');
 });
 
-test('a URL without a scheme is given one, because My Maps only linkifies those', () => {
-  const formula = src.mapExportFormula_();
-  assert.ok(formula.includes('https://'), 'the scheme is no longer added to bare hosts');
-  assert.ok(formula.includes('LEFT(LOWER('), 'the "does it already have a scheme" test is gone');
+test('a site that already has a scheme keeps the one it has', () => {
+  const built = build({
+    events: [atParadiso({ dateStart: day('2026-06-12'), title: 'Open Stage' })],
+    venues: [venue({ name: 'Paradiso', address: 'Weteringschans 6', postcode: '1017 SG',
+      city: 'Amsterdam', url: 'http://paradiso.nl' })],
+  });
+  assert.strictEqual(built.rows[0][VENUE], 'Paradiso — http://paradiso.nl');
 });
 
-test('the formula is a formula, and one cell of it', () => {
-  // Where it is anchored is a property of the write, not of the formula, and is asserted in
-  // `map-refresh.test.js`.
-  const formula = src.mapExportFormula_();
-  assert.ok(formula.startsWith('='), 'the map export is not a formula');
-  assert.strictEqual(formula.includes('\n'), false, 'one cell holds one line');
+test('a venue with no site is the name alone, with no separator left hanging', () => {
+  const built = build({
+    events: [atParadiso({ dateStart: day('2026-06-12'), title: 'Open Stage' })],
+  });
+  assert.strictEqual(built.rows[0][VENUE], 'Paradiso');
+});
+
+test('the organiser carries a profile link, and a missing handle carries nothing', () => {
+  const built = build({
+    events: [
+      atParadiso({ dateStart: day('2026-06-12'), title: 'Linked', organiser: 'Studio Zuid' }),
+      atParadiso({ dateStart: day('2026-06-13'), title: 'Unlinked', organiser: 'Aurora Collective' }),
+    ],
+    organisers: [
+      rowFor(CONFIG, 'organisers', { name: 'Studio Zuid', social: 'studiozuid' }),
+      rowFor(CONFIG, 'organisers', { name: 'Aurora Collective' }),
+    ],
+  });
+  assert.strictEqual(built.rows[0][ORGANISER],
+    `Studio Zuid — ${CONFIG.social.profileBaseUrl}studiozuid`);
+  assert.strictEqual(built.rows[1][ORGANISER], 'Aurora Collective');
+});
+
+test('a venue named in another case reaches the venue the sheet resolved', () => {
+  // Every name lookup in the sheet folds case, so the map must agree with the City column rather
+  // than dropping to geocoding by name.
+  const built = build({
+    events: [event({ dateStart: day('2026-06-12'), title: 'Open Stage', venue: 'paradiso',
+      city: 'Amsterdam' })],
+  });
+  assert.strictEqual(built.rows[0][LOCATION],
+    `Weteringschans 6, 1017 SG Amsterdam, ${CONFIG.mapExport.countrySuffix}`);
+  assert.deepStrictEqual(built.approximate, []);
+});
+
+/* ── what is left off, and why ──────────────────────────────────────────────────────────────── */
+
+test('an event with no venue has no position, and is kept out', () => {
+  const built = build({
+    events: [event({ dateStart: day('2026-06-12'), title: 'Roomless', status: status.confirmed })],
+  });
+  assert.deepStrictEqual(built.rows, []);
+  assert.strictEqual(built.placed, 0);
+});
+
+test('the two venue-less kinds are kept apart, because they mean opposite things', () => {
+  // A concept event is allowed to have no room yet; a confirmed one is a hole in the sheet.
+  const built = build({
+    events: [
+      event({ dateStart: day('2026-06-12'), title: 'Announced', status: status.concept }),
+      event({ dateStart: day('2026-06-13'), title: 'Roomless', status: status.confirmed }),
+    ],
+  });
+  assert.deepStrictEqual(built.announced, ['Announced']);
+  assert.deepStrictEqual(built.roomless, ['Roomless']);
+});
+
+test('what the Upcoming? column excludes never reaches the map', () => {
+  const built = build({
+    events: [
+      atParadiso({ dateStart: day('2026-06-12'), title: 'Published' }),
+      atParadiso({ dateStart: day('2026-06-13'), title: 'Cancelled', status: status.cancelled,
+        upcoming: scope.cancelled }),
+      atParadiso({ dateStart: day('2026-06-01'), title: 'Finished', upcoming: scope.past }),
+    ],
+  });
+  assert.deepStrictEqual(built.rows.map(row => row[TITLE]),
+    ['12-06-26 Published']);
+});
+
+/* ── the contract the rows are built against ────────────────────────────────────────────────── */
+
+test('the header count is enforced rather than assumed', () => {
+  const saved = CONFIG.mapExport.headers;
+  CONFIG.mapExport.headers = ['Title', 'When', 'Venue'];
+  try {
+    assert.throws(() => build({}), /exactly the five columns/);
+  } finally {
+    CONFIG.mapExport.headers = saved;
+  }
+});
+
+test('a cap under one date is refused rather than emptying the map', () => {
+  const saved = CONFIG.mapExport.maxDays;
+  CONFIG.mapExport.maxDays = 0;
+  try {
+    assert.throws(() => build({}), /an event occupies at least one date/);
+  } finally {
+    CONFIG.mapExport.maxDays = saved;
+  }
+});
+
+test('every row has one cell per configured column', () => {
+  const built = build({
+    events: [atParadiso({
+      dateStart: day('2026-06-12'), dateEnd: day('2026-06-13'), title: 'Weekender',
+    })],
+  });
+  for (const row of built.rows) {
+    assert.strictEqual(row.length, CONFIG.mapExport.headers.length);
+  }
 });

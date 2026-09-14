@@ -3,7 +3,8 @@
 A Google Apps Script codebase that turns one spreadsheet of events into three things, none of which have to be
 maintained by hand:
 
-- **a map** — an export tab shaped for Google My Maps, with one geocodable line and one popup per upcoming event
+- **a map** — an export tab shaped for Google My Maps: one geocodable line per **date**, so an event running over three
+  days is three pins, each named for its day
 - **an agenda document** — a read-only Google Doc, rebuilt weekly, grouped by month, that anyone can read or download as
   a PDF from a link that never changes
 - **a dashboard** — three dropdowns, no formulas to touch
@@ -27,7 +28,7 @@ history. A venue that must not publish its address is one ticked box, and a stre
 reported before the next map refresh. Generated tabs and computed columns are protected, and the dashboard results
 carry a second, warning-only protection on top.
 
-**In the menu — what maintainers run.** Check the data, rebuild the map export, rebuild the document, save a dated PDF,
+**In the menu — what maintainers run.** Check the data, rewrite the map export, rebuild the document, save a dated PDF,
 install the weekly trigger. Each one ends with a dialog saying what it actually did — read back from the live file, not
 assumed from what it just wrote.
 
@@ -37,11 +38,9 @@ capture tool that reads the sheet back out as pasteable code so a rebuild does n
 
 ## Why it is built like this
 
-One source per derived fact, so the three outputs cannot disagree about a date or about what publishes. Live formulas
-rather than snapshots, so the scripts only ever have to put one *back*. No output ever reads a `(private)` column. And
-because almost every spreadsheet failure is silent — a formula stores fine and evaluates to an error, a check collapses
-and reports clean — every run reports what the cells actually *computed*, while staying quiet about what is merely
-unfinished.
+One source per derived fact, so the three outputs cannot disagree about what publishes. A formula wherever the sheet can
+hold the answer, so the scripts only have to put one *back*. No output reads a `(private)` column. And because most
+spreadsheet failures are silent, every run reports what the cells hold.
 
 The reasoning, the three roles it all turns on, and where state lives: [`docs/architecture.md`](docs/architecture.md).
 

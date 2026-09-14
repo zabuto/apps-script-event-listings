@@ -118,11 +118,15 @@ function parseA1_(reference) {
  * *result*, and a report asserted against a formula that never ran proves nothing. `spill: []` says
  * it computed nothing, which is a different statement from saying nothing.
  *
+ * `coerce` stands in for what Sheets makes of a written value: it is given each one on the way in,
+ * and its answer is what the cell holds — so a writer that reads its own block back is testable
+ * against a cell that kept something else.
+ *
  * Writes are recorded on `model` as well as applied, so a test can assert *where* the code wrote —
  * the anchor a spilled formula depends on — and not only what came back.
  */
 function fakeSheet(name, headers, rows,
-  { lastRow = null, maxColumns = null, spill = null, validation = null } = {}) {
+  { lastRow = null, maxColumns = null, spill = null, validation = null, coerce = null } = {}) {
   const grid = [headers.slice(), ...rows.map(row => {
     const filled = row.slice();
     while (filled.length < headers.length) filled.push('');
@@ -215,7 +219,8 @@ function fakeSheet(name, headers, rows,
               'rules set for this cell.');
           }
         }
-        values.forEach((line, r) => line.forEach((value, c) => cell(row + r, column + c, value)));
+        values.forEach((line, r) => line.forEach((value, c) =>
+          cell(row + r, column + c, coerce ? coerce(value) : value)));
         return range;
       },
       getDataValidations: () => {
@@ -263,7 +268,7 @@ function fakeSheet(name, headers, rows,
         return range;
       },
     });
-    for (const style of ['setBackground', 'setFontColor', 'setFontWeight']) {
+    for (const style of ['setBackground', 'setFontColor', 'setFontWeight', 'setNumberFormat']) {
       range[style] = value => {
         model.formats.push({ row: row, column: column, height: height, width: width,
           style: style, value: value });
@@ -308,7 +313,7 @@ function fakeSheet(name, headers, rows,
  * `timeZone` defaults to `FIXTURE_ZONE`. A test whose answer depends on the zone names its own; one
  * that must agree with the shipped config passes `CONFIG.timeZone`.
  *
- * `lastRow`, `maxColumns` and `spill` pass through to `fakeSheet`.
+ * `lastRow`, `maxColumns`, `spill` and `coerce` pass through to `fakeSheet`.
  */
 function fakeSpreadsheet(config, { timeZone = FIXTURE_ZONE, tabs = {} } = {}) {
   const sheets = {};
@@ -327,6 +332,7 @@ function fakeSpreadsheet(config, { timeZone = FIXTURE_ZONE, tabs = {} } = {}) {
       maxColumns: spec.maxColumns || null,
       spill: spec.spill === undefined ? null : spec.spill,
       validation: spec.validation || null,
+      coerce: spec.coerce || null,
     });
   }
   const spreadsheet = {

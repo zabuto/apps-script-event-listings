@@ -139,7 +139,7 @@ Reload the spreadsheet. It now has your configured menu, with:
 
 - **Check data** — unknown venues and organisers, dates the wrong way round, missing addresses, an `@` in a handle,
   events booked into a closed venue.
-- **Refresh map export** — rebuilds the export tab and reports whether it is safe to import.
+- **Refresh map export** — rewrites the export tab, one row per date, and reports whether it is safe to import.
 - **Generate events document** — rebuilds the agenda document from every upcoming event.
 - **Save events PDF** — optional, a dated copy in the archive folder. `examples/` holds one, built from the seed data.
 - **Install weekly refresh** — the trigger that keeps the document current. A trigger belongs to the account that
@@ -150,17 +150,20 @@ Reload the spreadsheet. It now has your configured menu, with:
 
 The map is the one part that is not scripted, because My Maps has no API:
 
-1. <https://www.google.com/mymaps> → **Create a new map**.
-2. **Import** → the spreadsheet → it imports the **first** tab, which is the export tab.
-3. Position column: **Location**. Title column: **Title**.
-4. Style the pins and name the layer, then set the map's sharing to whatever it should be — a public link, a named list,
+1. Run the menu's **Refresh map export** first: the tab holds what the last refresh computed, and the import copies it
+   as it stands.
+2. <https://www.google.com/mymaps> → **Create a new map**.
+3. **Import** → the spreadsheet → it imports the **first** tab, which is the export tab.
+4. Position column: **Location**. Title column: **Title**. One row per date, so an event running over three days
+   arrives as three pins at one address, each named for its day.
+5. Style the pins and name the layer, then set the map's sharing to whatever it should be — a public link, a named list,
    or nothing yet. My Maps has no API, so no part of this codebase can read or change that.
-5. Copy the `mid=` value out of the map's URL — the id alone, without the `&ll=…&z=…` tail the browser appends — and
+6. Copy the `mid=` value out of the map's URL — the id alone, without the `&ll=…&z=…` tail the browser appends — and
    put it into the bound project as the `MAP_ID` script property.
 
-The property holds the id, never a URL: the code composes the **`/view`** address around it, so the link in the document
-and in every downloaded PDF cannot be the `/edit` one. `showConfiguration` prints the address it composes. Without
-`MAP_ID` the line is omitted and the document builds regardless.
+The property holds the id, never a URL: the code composes the **`/viewer`** address around it, so no `/edit` link can
+reach a reader. It arrives as one sentence above the closing line (`doc.mapLinkIcon`, `doc.mapLink`), and without
+`MAP_ID` that line is omitted.
 
 ## Rebuilding from scratch
 

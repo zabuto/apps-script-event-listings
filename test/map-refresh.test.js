@@ -1,20 +1,17 @@
 /**
  * `refreshMapExport` — what it writes to the tab, and the report that says whether to import it.
  *
- * This is the function that decides what My Maps receives. Where it anchors the formula matters as
- * much as the formula: spilled one column over, every value sits under the wrong header, and My
- * Maps imports headers.
+ * This is the function that decides what My Maps receives. Where it writes matters as much as what
+ * it writes: one column over, every value sits under the wrong header, and My Maps imports headers.
  *
- * Nothing here evaluates a formula, so the fixtures say what the sheet came back with — `spill` in
- * `helpers/fakes.js`. Whether the formula *computes* the right thing is a question only a sheet can
- * answer, and the probes inside the setup steps ask it. What is testable offline is everything
- * `refreshMapExport` does with the answer: the counting, the error detection, the two venue-less
- * lists, and the refusal to recommend an import.
+ * What the rows *say* is `map-export.test.js`. What is asserted here is everything around them: the
+ * anchor, the clearing, the plain-text format that keeps a title a title, the read-back, and the
+ * lists a maintainer acts on.
  */
 const { test } = require('node:test');
 const assert = require('node:assert');
 const { loadProject } = require('./helpers/project');
-const { installFakes, fakeSpreadsheet, rowFor } = require('./helpers/fakes');
+const { installFakes, fakeSpreadsheet, midnightIn, rowFor } = require('./helpers/fakes');
 
 const src = loadProject('src');
 const CONFIG = src.CONFIG;
@@ -22,50 +19,53 @@ const status = CONFIG.values.eventStatus;
 const scope = CONFIG.values.scope;
 const venueStatus = CONFIG.values.venueStatus;
 
-const event = values => rowFor(CONFIG, 'events', values);
-const venue = values => rowFor(CONFIG, 'venues', values);
+const SHEET_ZONE = 'Europe/Amsterdam';
+const NOW = new Date('2026-06-10T09:00:00Z');
+const day = ymd => midnightIn(SHEET_ZONE, ymd);
 
-/** The separator cache `argSeparator_` reads, so it never reaches for its probe sheet. */
-const SEPARATOR_KEY = `ARG_SEPARATOR:${CONFIG.spreadsheet.locale}`;
+const event = values => rowFor(CONFIG, 'events', Object.assign({
+  status: status.confirmed, upcoming: scope.upcoming,
+}, values));
+const venue = values => rowFor(CONFIG, 'venues', Object.assign({
+  status: venueStatus.active,
+}, values));
 
 /** One event that publishes, and the venue it names. */
 const PUBLISHED = event({
-  dateStart: new Date(2026, 5, 5), title: 'Open Stage', venue: 'Paradiso', city: 'Amsterdam',
-  status: status.confirmed, upcoming: scope.upcoming, when: 'Fri 5 Jun 2026',
+  dateStart: day('2026-06-12'), title: 'Open Stage', venue: 'Paradiso', city: 'Amsterdam',
 });
 const PARADISO = venue({ name: 'Paradiso', address: 'Weteringschans 6', postcode: '1017 SG',
-  city: 'Amsterdam', status: venueStatus.active });
+  city: 'Amsterdam' });
 
-/** What the sheet computes for `PUBLISHED`, in the five columns the formula builds. */
-const ONE_GOOD_ROW = [['Open Stage — Amsterdam', 'Fri 5 Jun 2026', 'Paradiso', '',
-  'Weteringschans 6, 1017 SG Amsterdam, Netherlands']];
+/** The one row `PUBLISHED` produces, in the five columns the export holds. */
+const ONE_GOOD_ROW = ['12-06-26 Open Stage', 'Fri 12 Jun 2026', 'Paradiso', '',
+  `Weteringschans 6, 1017 SG Amsterdam, ${CONFIG.mapExport.countrySuffix}`];
 
 /**
  * Runs `refreshMapExport` and hands back the tab it wrote and the one report it would have shown.
  *
  * `headers` defaults to the contract but can be widened, which is how the stale-column branch is
- * reached: a column left over from an earlier contract, with a header a formula change cannot clear.
+ * reached: a column left over from an earlier contract, whose header no rewrite of the rows clears.
  */
 function refresh({
   events = [PUBLISHED],
   venues = [PARADISO],
-  spill = ONE_GOOD_ROW,
+  organisers = [],
   headers = CONFIG.mapExport.headers,
-  separator = ',',
+  maxColumns = null,
+  coerce = null,
 } = {}) {
   const spreadsheet = fakeSpreadsheet(CONFIG, {
+    timeZone: SHEET_ZONE,
     tabs: {
-      mapExport: { headers: headers, rows: [], spill: spill },
+      mapExport: { headers: headers, rows: [], maxColumns: maxColumns, coerce: coerce },
       events: events,
       venues: venues,
+      organisers: organisers,
     },
   });
   const notified = [];
-  const restore = installFakes({
-    spreadsheet: spreadsheet,
-    properties: { [SEPARATOR_KEY]: separator },
-    notified: notified,
-  });
+  const restore = installFakes({ spreadsheet: spreadsheet, notified: notified, now: NOW });
   try {
     src.refreshMapExport();
   } finally {
@@ -79,37 +79,75 @@ function refresh({
   };
 }
 
+/** The rows under the header row, trimmed to the ones that hold anything. */
+const written = sheet => sheet.grid.slice(1).filter(row => String(row[0] || '') !== '');
+
 /* ── where it writes ───────────────────────────────────────────────────────────────────────── */
 
-test('the formula is written to A2, the one cell a spilled formula can start from', () => {
-  // Row 1 is the headers; the block spills down and right from here.
+test('the rows land under the headers, starting in row 2', () => {
   const { sheet } = refresh({});
-  assert.deepStrictEqual(sheet.formulas.map(written => [written.row, written.column]), [[2, 1]]);
-});
-
-test('the formula written is the map export formula, in the sheet\'s own dialect', () => {
-  // `setFormula` stores whatever string it is given, including one whose separators the locale
-  // rejects — `#ERROR!` in the cell and no exception anywhere.
-  const { sheet } = refresh({ separator: ';' });
-  const raw = src.mapExportFormula_();
-  assert.strictEqual(sheet.formulas[0].formula, src.localizeFormula_(raw, ';'));
-  assert.notStrictEqual(sheet.formulas[0].formula, raw,
-    'the formula was stored untranslated, which is #ERROR! in a semicolon locale');
+  assert.deepStrictEqual(written(sheet), [ONE_GOOD_ROW]);
+  assert.deepStrictEqual(sheet.grid[0].slice(0, CONFIG.mapExport.headers.length),
+    CONFIG.mapExport.headers);
 });
 
 test('row 1 is the configured headers, frozen, and styled as a header', () => {
   const { sheet } = refresh({});
-  assert.deepStrictEqual(sheet.grid[0].slice(0, CONFIG.mapExport.headers.length),
-    CONFIG.mapExport.headers);
   assert.strictEqual(sheet.frozenRows, 1);
   const background = sheet.formats.find(format => format.style === 'setBackground');
   assert.strictEqual(background.value, CONFIG.style.palette.primary);
   assert.strictEqual(background.row, 1, 'the header styling was applied to the wrong row');
 });
 
+test('the rows are formatted as plain text before they are written', () => {
+  // `setValues` stores a string opening with `=` as a formula and one reading like a date as a date,
+  // and a title is whatever a maintainer typed.
+  const { sheet } = refresh({});
+  const format = sheet.formats.find(entry => entry.style === 'setNumberFormat');
+  assert.ok(format, 'the block is written without a number format, so a title can become a formula');
+  assert.strictEqual(format.value, '@');
+  assert.strictEqual(format.row, 2, 'the header row was formatted as text as well');
+});
+
+test('a cell that did not keep what it was sent stops the import', () => {
+  // The read-back is the whole check: `setValues` says nothing about the result, and a pin carries
+  // whatever the cell ended up holding.
+  const { report } = refresh({
+    coerce: value => (String(value).startsWith('12-06-26 ') ? '#ERROR!' : value),
+  });
+  assert.match(report, /1 row\(s\) from 1 event\(s\) ⚠/);
+  assert.match(report, /DO NOT IMPORT this tab — 1 row\(s\) were written/);
+  assert.match(report, /1 cell\(s\) hold something other than what this run computed/);
+});
+
+test('a row that vanished on the way in stops the import too', () => {
+  const { report } = refresh({
+    coerce: value => (String(value).startsWith('12-06-26 ') ? '' : value),
+  });
+  assert.match(report, /the tab reads back 0/);
+  assert.match(report, /DO NOT IMPORT/);
+});
+
+test('a title that opens with an equals sign stays a title', () => {
+  const { sheet, report } = refresh({
+    events: [event({ dateStart: day('2026-06-12'), title: '=Best of 2026', venue: 'Paradiso',
+      city: 'Amsterdam' })],
+  });
+  assert.strictEqual(written(sheet)[0][0], '12-06-26 =Best of 2026');
+  assert.strictEqual(report.includes('DO NOT IMPORT'), false);
+});
+
+test('the whole tab is cleared first, so an export that shrank leaves nothing behind', () => {
+  // Rows left under the new ones import as pins on dates that are gone.
+  const { sheet } = refresh({});
+  const cleared = sheet.cleared.find(entry => entry.row === 2 && entry.column === 1);
+  assert.ok(cleared, 'the rows below the headers were not cleared before the write');
+  assert.ok(cleared.height > 1, 'only the rows about to be written were cleared');
+});
+
 test('a column left over past the contract is cleared, its header included', () => {
-  // Spilled values vanish with their formula; a header does not. A leftover header is a field My
-  // Maps imports as an empty row in every popup.
+  // The rows below a dropped column go with it, its header does not, and a leftover header is a
+  // field My Maps imports as an empty row in every popup.
   const { sheet, report } = refresh({
     headers: [...CONFIG.mapExport.headers, 'Retired Field', 'Older Still'],
   });
@@ -120,44 +158,64 @@ test('a column left over past the contract is cleared, its header included', () 
 
 /* ── the report, which is the whole of what a maintainer acts on ────────────────────────────── */
 
-test('a clean rebuild counts the rows, the expected rows, and ticks', () => {
+test('a clean rebuild counts the rows, the events they came from, and ticks', () => {
   const { report } = refresh({});
-  assert.match(report, /1 row\(s\), 1 expected, 0 error cell\(s\) ✓/);
+  assert.match(report, /1 row\(s\) from 1 event\(s\) ✓/);
   assert.strictEqual(report.includes('DO NOT IMPORT'), false, 'a clean tab was called unimportable');
 });
 
-test('an error cell in any column stops the import, not only in the first', () => {
-  // A spilled formula fails per column, so reading `A2` alone can find the title column computing
-  // perfectly while the next two are #VALUE! on every row.
+test('a run is counted as its dates, and as the one event behind them', () => {
   const { report } = refresh({
-    spill: [['Open Stage — Amsterdam', 'Fri 5 Jun 2026', '#VALUE!', '', '#REF!']],
+    events: [event({ dateStart: day('2026-06-12'), dateEnd: day('2026-06-14'), title: 'Weekender',
+      venue: 'Paradiso', city: 'Amsterdam' })],
   });
-  assert.match(report, /1 row\(s\), 1 expected, 2 error cell\(s\) ⚠/);
-  assert.match(report, /DO NOT IMPORT this tab — the map would take the errors as place names/);
+  assert.match(report, /3 row\(s\) from 1 event\(s\) ✓/);
+  assert.match(report, /One row per date/);
 });
 
-test('a row count that disagrees with the events tab stops the import', () => {
-  // Both numbers come from the same run, so a disagreement means the tab computed something other
-  // than what publishes — not visible in any single cell.
-  const second = event({ dateStart: new Date(2026, 5, 6), title: 'Late Set', venue: 'Paradiso',
-    city: 'Amsterdam', status: status.confirmed, upcoming: scope.upcoming });
-  const { report } = refresh({ events: [PUBLISHED, second], spill: ONE_GOOD_ROW });
-  assert.match(report, /1 row\(s\), 2 expected, 0 error cell\(s\) ⚠/);
-  assert.match(report, /DO NOT IMPORT/);
+test('a tab that holds nothing is reported as nothing, not as an error', () => {
+  const { report } = refresh({ events: [] });
+  assert.match(report, /0 row\(s\) from 0 event\(s\) ✓/);
 });
 
-test('a tab that computed nothing at all is reported as nothing, not as an error', () => {
-  const { report } = refresh({ events: [], spill: [] });
-  assert.match(report, /0 row\(s\), 0 expected, 0 error cell\(s\) ✓/);
+test('the dates of a run that are over are named as left off', () => {
+  const { report } = refresh({
+    events: [event({ dateStart: day('2026-06-08'), dateEnd: day('2026-06-11'), title: 'Under Way',
+      venue: 'Paradiso', city: 'Amsterdam' })],
+  });
+  assert.match(report, /2 date\(s\) of a run already under way are past/);
+});
+
+test('a run cut at the cap stops the sheet being trusted about it', () => {
+  const { report } = refresh({
+    events: [event({ dateStart: day('2026-06-12'), dateEnd: day('2027-06-12'),
+      title: 'Mistyped Year', venue: 'Paradiso', city: 'Amsterdam' })],
+  });
+  assert.match(report, new RegExp(`Cut to ${CONFIG.mapExport.maxDays} dates`));
+  assert.match(report, /Mistyped Year \(366 dates\)/);
+  assert.match(report, /Check the end date/);
+});
+
+test('an export past what a layer imports says so, since the import will not', () => {
+  const saved = CONFIG.mapExport.importRowLimit;
+  CONFIG.mapExport.importRowLimit = 2;
+  try {
+    const { report } = refresh({
+      events: [event({ dateStart: day('2026-06-12'), dateEnd: day('2026-06-14'), title: 'Weekender',
+        venue: 'Paradiso', city: 'Amsterdam' })],
+    });
+    assert.match(report, /3 rows, and one layer imports 2/);
+  } finally {
+    CONFIG.mapExport.importRowLimit = saved;
+  }
 });
 
 /* ── the two venue-less lists, which mean opposite things ───────────────────────────────────── */
 
 test('a concept event with no venue is named as expected, not as a gap', () => {
   const { report } = refresh({
-    events: [event({ dateStart: new Date(2026, 5, 5), title: 'Somewhere Soon',
-      status: status.concept, upcoming: scope.upcoming })],
-    spill: [],
+    events: [event({ dateStart: day('2026-06-12'), title: 'Somewhere Soon',
+      status: status.concept })],
   });
   assert.match(report, new RegExp(`${status.concept}, venue still to be announced: Somewhere Soon`));
   assert.match(report, /Expected, not a gap/);
@@ -167,9 +225,7 @@ test('a concept event with no venue is named as expected, not as a gap', () => {
 
 test('a confirmed event with no venue is a hole in the sheet, and says so', () => {
   const { report } = refresh({
-    events: [event({ dateStart: new Date(2026, 5, 5), title: 'Roomless',
-      status: status.confirmed, upcoming: scope.upcoming })],
-    spill: [],
+    events: [event({ dateStart: day('2026-06-12'), title: 'Roomless' })],
   });
   assert.match(report,
     new RegExp(`⚠ ${status.confirmed} with no venue, so left off the map: Roomless`));
@@ -183,12 +239,9 @@ test('the two lists are kept apart when both kinds are present', () => {
   // also holds the real problem.
   const { report } = refresh({
     events: [
-      event({ dateStart: new Date(2026, 5, 5), title: 'Announced', status: status.concept,
-        upcoming: scope.upcoming }),
-      event({ dateStart: new Date(2026, 5, 6), title: 'Roomless', status: status.confirmed,
-        upcoming: scope.upcoming }),
+      event({ dateStart: day('2026-06-12'), title: 'Announced', status: status.concept }),
+      event({ dateStart: day('2026-06-13'), title: 'Roomless' }),
     ],
-    spill: [],
   });
   assert.match(report, /to be announced: Announced/);
   assert.match(report, /with no venue, so left off the map: Roomless/);
@@ -196,27 +249,20 @@ test('the two lists are kept apart when both kinds are present', () => {
     'the confirmed event was excused along with the concept one');
 });
 
-test('a venue-less event is not counted as an expected map row', () => {
+test('a venue-less event is not counted as an event on the map', () => {
   const { report } = refresh({
-    events: [PUBLISHED, event({ dateStart: new Date(2026, 5, 6), title: 'Roomless',
-      status: status.confirmed, upcoming: scope.upcoming })],
-    spill: ONE_GOOD_ROW,
+    events: [PUBLISHED, event({ dateStart: day('2026-06-13'), title: 'Roomless' })],
   });
-  assert.match(report, /1 row\(s\), 1 expected/);
+  assert.match(report, /1 row\(s\) from 1 event\(s\)/);
 });
 
 /* ── the pin that lands in the wrong place ──────────────────────────────────────────────────── */
 
 test('a venue with no address is named, because its pin lands on the city centre', () => {
-  // Counting commas cannot tell an approximate location from an exact one, so this asks the venues
-  // tab: the difference is a pin on the door or a pin in the town square.
   const { report } = refresh({
-    events: [event({ dateStart: new Date(2026, 5, 5), title: 'House Concert',
-      venue: 'The Back Room', city: 'Amsterdam', status: status.confirmed,
-      upcoming: scope.upcoming })],
-    venues: [venue({ name: 'The Back Room', city: 'Amsterdam', status: venueStatus.active })],
-    spill: [['House Concert — Amsterdam', 'Fri 5 Jun 2026', 'The Back Room', '',
-      'The Back Room, Amsterdam, Netherlands']],
+    events: [event({ dateStart: day('2026-06-12'), title: 'House Concert',
+      venue: 'The Back Room', city: 'Amsterdam' })],
+    venues: [venue({ name: 'The Back Room', city: 'Amsterdam' })],
   });
   assert.match(report, /Geocoding by venue name, so the pin lands on the city centre: House Concert/);
 });
@@ -227,43 +273,16 @@ test('a venue with an address is not named as approximate', () => {
     'an exactly located venue was reported as approximate');
 });
 
-test('only the rows at an addressless venue are named, not every row on the tab', () => {
-  // One addressless venue must not tar the whole tab: a list that names every pin identifies
-  // none of them.
+test('only the events at an addressless venue are named, not every event on the tab', () => {
+  // One addressless venue must not tar the whole tab: a list that names every pin identifies none.
   const { report } = refresh({
-    events: [PUBLISHED, event({ dateStart: new Date(2026, 5, 6), title: 'House Concert',
-      venue: 'The Back Room', city: 'Amsterdam', status: status.confirmed,
-      upcoming: scope.upcoming })],
-    venues: [PARADISO, venue({ name: 'The Back Room', city: 'Amsterdam',
-      status: venueStatus.active })],
-    spill: [
-      ONE_GOOD_ROW[0],
-      ['House Concert — Amsterdam', 'Sat 6 Jun 2026', 'The Back Room', '',
-        'The Back Room, Amsterdam, Netherlands'],
-    ],
+    events: [PUBLISHED, event({ dateStart: day('2026-06-13'), title: 'House Concert',
+      venue: 'The Back Room', city: 'Amsterdam' })],
+    venues: [PARADISO, venue({ name: 'The Back Room', city: 'Amsterdam' })],
   });
   assert.match(report, /city centre: House Concert/);
   assert.strictEqual(/city centre:[^\n]*Open Stage/.test(report), false,
     'a venue with a full address was named as geocoding by name');
-});
-
-test('a venue whose name merely prefixes another is not named as approximate', () => {
-  // The `+ ','` makes the comparison a whole first field: an addressless `The Back Room` must not
-  // report a row located at `The Back Room Annex, …`, a different venue with an address.
-  const { report } = refresh({
-    events: [event({ dateStart: new Date(2026, 5, 6), title: 'At The Annex',
-      venue: 'The Back Room Annex', city: 'Amsterdam', status: status.confirmed,
-      upcoming: scope.upcoming })],
-    venues: [
-      venue({ name: 'The Back Room', city: 'Amsterdam', status: venueStatus.active }),
-      venue({ name: 'The Back Room Annex', address: 'Kade 9', postcode: '1011 AA',
-        city: 'Amsterdam', status: venueStatus.active }),
-    ],
-    spill: [['At The Annex — Amsterdam', 'Sat 6 Jun 2026', 'The Back Room Annex', '',
-      'The Back Room Annex, Amsterdam, Netherlands']],
-  });
-  assert.strictEqual(report.includes('Geocoding by venue name'), false,
-    'a prefix of another venue name was treated as a match');
 });
 
 /* ── the instructions, which are the point of the dialog ────────────────────────────────────── */
@@ -276,9 +295,15 @@ test('the report names the columns the import has to be pointed at', () => {
   assert.match(report, new RegExp(`title column "${headers[0]}"`));
 });
 
+test('the report says the tab does not follow the sheet', () => {
+  // It holds what the run computed. A maintainer who reads it as live imports last month's dates.
+  const { report } = refresh({});
+  assert.match(report, /holds what this run computed, and does not follow the sheet/);
+});
+
 test('the report says the layer must be deleted, not just re-imported', () => {
   // My Maps only appends to a layer's field list, so a column that has gone from this tab stays in
-  // the popup until the layer is replaced. A re-import alone leaves a stale empty row.
+  // the popup until the layer is replaced.
   const { report } = refresh({});
   assert.match(report, /Deleting the layer is not optional/);
   assert.match(report, /only ever appends/);
@@ -287,29 +312,13 @@ test('the report says the layer must be deleted, not just re-imported', () => {
 /* ── refusals ───────────────────────────────────────────────────────────────────────────────── */
 
 test('a missing map export tab is refused by name rather than written elsewhere', () => {
-  const spreadsheet = fakeSpreadsheet(CONFIG, { tabs: { events: [], venues: [] } });
-  const restore = installFakes({
-    spreadsheet: spreadsheet, properties: { [SEPARATOR_KEY]: ',' }, notified: [],
+  const spreadsheet = fakeSpreadsheet(CONFIG, {
+    tabs: { events: [], venues: [], organisers: [] },
   });
+  const restore = installFakes({ spreadsheet: spreadsheet, notified: [], now: NOW });
   try {
     assert.throws(() => src.refreshMapExport(),
       new RegExp(`No "${CONFIG.tabs.mapExport}" tab`));
-  } finally {
-    restore();
-  }
-});
-
-test('a fixture that does not say what the formula computes is refused by the fake', () => {
-  // An unstated spill would read as a tab that computed nothing, and the whole report would then
-  // be asserted against a formula that never ran.
-  const spreadsheet = fakeSpreadsheet(CONFIG, {
-    tabs: { mapExport: { headers: CONFIG.mapExport.headers, rows: [] }, events: [], venues: [] },
-  });
-  const restore = installFakes({
-    spreadsheet: spreadsheet, properties: { [SEPARATOR_KEY]: ',' }, notified: [],
-  });
-  try {
-    assert.throws(() => src.refreshMapExport(), /gave no `spill`/);
   } finally {
     restore();
   }

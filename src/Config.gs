@@ -38,11 +38,11 @@ const CONFIG = {
   timeZone: 'Europe/Amsterdam',
 
   /**
-   * The address a map id is composed into. Fixing the **view** form here keeps an `/edit` link, and
+   * The address a map id is composed into. Fixing the **viewer** form here keeps an `/edit` link, and
    * the `&ll=…&z=…` viewport a browser appends, out of the document and every PDF downloaded from
    * it. The id is in `properties.mapId`; without one the line is omitted.
    */
-  mapViewBaseUrl: 'https://www.google.com/maps/d/view?mid=',
+  mapViewBaseUrl: 'https://www.google.com/maps/d/viewer?mid=',
 
   /**
    * The social network organiser handles belong to. Handles are stored bare, without the `@`.
@@ -202,7 +202,7 @@ const CONFIG = {
     /**
      * These columns *are* the popup: My Maps renders every imported column as a label/value row in
      * sheet order, with no way to hide one, so each costs a line in every pin. `City` is deliberately
-     * absent — the title carries it (see `titleSuffix`) and `Location` says it again.
+     * absent: `Location` already ends in it.
      *
      * **Dropping a column needs a fresh layer, not a re-import.** My Maps matches a later import to
      * the layer's *existing* field list by name and only ever appends. Delete the layer, add it again.
@@ -214,10 +214,33 @@ const CONFIG = {
      */
     countrySuffix: 'Netherlands',
     /**
-     * The city is appended to the map title because the layer panel lists titles and nothing else: a
-     * touring show otherwise makes that list a dozen indistinguishable rows.
+     * Between the date and the title in a pin's name. The layer panel lists names and nothing else,
+     * and it truncates, so the join is a space: every character not spent on punctuation is one the
+     * title keeps.
      */
-    titleSuffix: ' — ',
+    titleJoin: ' ',
+    /**
+     * How the date leading a pin's name is spelled, short for the same reason. The year is in it
+     * because an export crosses one. Tokens: `d`, `dd`, `ddd`, `m`, `mm`, `mmm`, `y`, `yy`, `yyyy`,
+     * with the names from `values.dayNames` and `values.monthNames`.
+     */
+    titleDateFormat: 'dd-mm-yy',
+    /**
+     * What a pin's `When` adds on a run of more than one day, after the date. `{day}` and `{days}`
+     * are filled in; `''` leaves the pin naming its own date and nothing about the run.
+     */
+    runDay: ' (day {day} of {days})',
+    /**
+     * The most dates one event may occupy. A mistyped end date is otherwise a year of pins: the run
+     * is cut here and the refresh names what it cut, so the map stays importable while the sheet is
+     * corrected.
+     */
+    maxDays: 31,
+    /**
+     * Rows one My Maps layer imports. Past this it takes the first `importRowLimit` and drops the
+     * rest without saying so, which the refresh reports instead.
+     */
+    importRowLimit: 2000,
   },
 
   /* ──────────────────────────────────────────────────────────────── the agenda document ───── */
@@ -228,6 +251,16 @@ const CONFIG = {
     title: 'Upcoming Events',
     /** Rebuilt on every run, so nothing may be typed into the document by hand. */
     outro: 'Something missing? Let us know.',
+    /**
+     * The line that links the published map, above the outro. Icon and sentence are one link, so it
+     * reads as one out of context. Omitted when `properties.mapId` is unset.
+     */
+    mapLink: 'Look at a map view for the events',
+    /**
+     * The marker in front of that line, in `style.palette.primary`. A text glyph, not an emoji: an
+     * emoji keeps its own colours whatever the document asks for. `''` leaves the line unmarked.
+     */
+    mapLinkIcon: '⌖',
     /** A concept event may have no venue yet. The document is the one output that can say so. */
     venueTba: 'Venue to be announced',
     noEvents: 'No upcoming events listed',

@@ -5,10 +5,10 @@
  * prose drifts from it the first time a helper is duplicated or dropped.
  *
  * `shared/Config.gs` has this problem and is guarded on both sides: `sync-config.sh` writes the
- * copies and `check-formulas.js` fails when they differ. The helper copies had neither, and Apps
+ * copies and `check-formulas.js` fails when they differ. The helper copies have neither, and Apps
  * Script gives no way to share a file between two projects — so `bootstrap/Common.gs` and
- * `src/Code.gs` each carry their own `localizeFormula_`, `columnIndex_`, `setFormula_` and friends.
- * Fix a bug in one and nothing tells you the other still has it.
+ * `src/Code.gs` each carry their own `columnIndex_`, `lookupKey_`, `countFilled_` and friends. Fix
+ * a bug in one and nothing tells you the other still has it.
  *
  * The guard is **behavioural first**. Identical source is a proxy for what actually matters — that
  * the two answer the same way — and holding two projects to byte-identical text would force
@@ -28,9 +28,8 @@ const src = loadProject('src');
 
 /** Helpers that appear in both projects and are expected to. */
 const EXPECTED_SHARED = [
-  'argSeparator_', 'cityOnlyVenue_', 'colLookup_', 'colRange_', 'columnIndex_', 'columnLetter_',
-  'columnSpec_', 'countFilled_', 'headers_', 'localizeFormula_', 'lookupKey_', 'notify_',
-  'quoteLiteral_', 'setFormula_', 'tabRef_',
+  'cityOnlyVenue_', 'columnIndex_', 'columnSpec_', 'countFilled_', 'headers_', 'lookupKey_',
+  'notify_',
 ];
 
 /**
@@ -42,9 +41,6 @@ const EXPECTED_SHARED = [
 const INTENDED_DIFFERENCES = {
   notify_: 'different signatures by design: the scaffolding reports title + body through a dialog '
     + 'and falls back to Logger; the bound project takes one message and falls back to console.',
-  columnLetter_: 'same arithmetic either way: the scaffolding delegates the base-26 loop to its own '
-    + 'letterOf_(), which the dashboard also needs because it has no CONFIG.columns contract of its '
-    + 'own; the bound project addresses only contract columns, so that one keeps the loop inline.',
 };
 
 /* ── extracting one function's source ───────────────────────────────────────────────────────── */
@@ -175,13 +171,8 @@ test('the column contract helpers answer identically', () => {
   for (const tab of TABS) {
     sameAnswer('columnSpec_', p => p.columnSpec_(tab));
     sameAnswer('headers_', p => p.headers_(tab));
-    sameAnswer('tabRef_', p => p.tabRef_(tab));
     for (const column of boot.CONFIG.columns[tab]) {
       sameAnswer('columnIndex_', p => p.columnIndex_(tab, column.key));
-      sameAnswer('columnLetter_', p => p.columnLetter_(tab, column.key));
-      sameAnswer('colRange_', p => p.colRange_(tab, column.key));
-      sameAnswer('colRange_ (explicit row)', p => p.colRange_(tab, column.key, 5));
-      sameAnswer('colLookup_', p => p.colLookup_(tab, column.key));
     }
   }
 });
@@ -192,39 +183,6 @@ test('the column helpers fail identically on an unknown key', () => {
   };
   assert.strictEqual(message(boot), message(src));
   assert.notStrictEqual(message(boot), null, 'neither project threw on an unknown column key');
-});
-
-test('the formula dialect helpers answer identically', () => {
-  const formulas = [
-    '=IF(A1=1,2,3)',
-    '=A1&", Netherlands"',
-    '=IF(A1="x, y",TRUE,FALSE)',
-    '=IF(A1="say ""hi""",1,2)',
-    '=SUM(A1:A10)',
-  ];
-  for (const formula of formulas) {
-    for (const separator of [',', ';']) {
-      sameAnswer('localizeFormula_', p => p.localizeFormula_(formula, separator));
-    }
-  }
-});
-
-test('setFormula_ writes the same string in both projects', () => {
-  const written = project => {
-    const range = { value: null, setFormula(v) { this.value = v; } };
-    project.setFormula_(range, '=IF(A1="a, b",1,2)', ';');
-    return range.value;
-  };
-  assert.strictEqual(written(boot), written(src));
-});
-
-test('quoteLiteral_ quotes a config value the same way', () => {
-  // Both projects build formulas out of the same `Config.gs`, so a value one of them escapes and the
-  // other interpolates raw is a formula the sheet parses in one output and not in the other.
-  for (const value of ['Confirmed', 'the "barn"', '""', 'a, b', "'t Blauwe Theehuis", ' — ',
-    '', null, undefined, 0, 42]) {
-    sameAnswer('quoteLiteral_', p => p.quoteLiteral_(value));
-  }
 });
 
 test('countFilled_ counts the same', () => {
@@ -255,15 +213,12 @@ test('cityOnlyVenue_ reads a City only? cell the same way in both projects', () 
 /* ── what is not covered here, said out loud ────────────────────────────────────────────────── */
 
 test('the helpers that cannot be compared by behaviour are the ones on record', () => {
-  // `argSeparator_` writes a probe tab and caches in Script Properties, and `notify_` needs a UI —
-  // neither is callable from a plain comparison. Their source comparison above is what guards them,
-  // which for notify_ means nothing at all: it is exempted. Stated here so the gap is visible
-  // rather than assumed covered.
+  // `notify_` needs a UI, so it cannot be called from a plain comparison, and the source comparison
+  // that would otherwise guard it is exempted — which leaves it guarded by nothing. Stated here so
+  // the gap is visible rather than assumed covered.
   const behaviourallyChecked = [
-    'cityOnlyVenue_', 'colLookup_', 'colRange_', 'columnIndex_', 'columnLetter_', 'columnSpec_',
-    'countFilled_', 'headers_', 'localizeFormula_', 'lookupKey_', 'quoteLiteral_', 'setFormula_',
-    'tabRef_',
+    'cityOnlyVenue_', 'columnIndex_', 'columnSpec_', 'countFilled_', 'headers_', 'lookupKey_',
   ];
   const notChecked = shared.filter(name => !behaviourallyChecked.includes(name));
-  assert.deepStrictEqual(notChecked, ['argSeparator_', 'notify_']);
+  assert.deepStrictEqual(notChecked, ['notify_']);
 });
